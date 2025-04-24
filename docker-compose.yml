@@ -1,0 +1,44 @@
+version: "3.9"
+services:
+  web:
+    build: { context: ., dockerfile: docker/web.Dockerfile }
+    environment:
+      - NEXT_PUBLIC_API_BASE=/api
+    depends_on: [api]
+    ports: ["3000:3000"]
+    networks: [proxy]
+
+  api:
+    build: { context: ., dockerfile: docker/api.Dockerfile }
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/turing_test
+      - REDIS_URL=redis://redis:6379/0
+    depends_on: [db, redis]
+    networks: [proxy, internal]
+
+  db:
+    image: postgres:17.4-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: svan_turing_test
+      POSTGRES_DB: turing_test
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports: ["6379:6379"]
+    networks: [internal]
+
+volumes:
+  db_data:
+  redis_data:
+
+networks:
+  proxy:
+  internal:
+    internal: true
