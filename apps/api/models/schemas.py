@@ -3,7 +3,6 @@ import uuid, datetime as dt
 
 from apps.api.db.models import GameStatus, Side, Sender
 
-
 # -------- User --------
 class UserOut(BaseModel):
     id: uuid.UUID

@@ -18,7 +18,7 @@ DATABASE_URL = (
 
 engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
 
-# async_sessionmaker 替代旧版 sessionmaker
+# 采用 fastApi 的异步特性构建会话
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     expire_on_commit=False,      # 常用配置
