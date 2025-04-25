@@ -1,3 +1,6 @@
+from __future__ import annotations
+from __future__ import with_statement
+
 import sys, pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.append(str(ROOT))   # 把 turing-test 加到 sys.path
@@ -5,10 +8,8 @@ sys.path.append(str(ROOT))   # 把 turing-test 加到 sys.path
 
 # -*- coding: utf-8 -*-
 # mypy: ignore-errors
-from __future__ import annotations
 
 
-from __future__ import with_statement
 import asyncio
 from logging.config import fileConfig
 
