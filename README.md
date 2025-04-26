@@ -1,4 +1,4 @@
-# turing_test 数据库环境准备
+# turing_test 开发手册
 
 启动 PostgreSQL 使用自定义端口：
 

@@ -1,26 +1,59 @@
-import clsx from "clsx";
-import { Sender } from "@/types";
+"use client";
 
-interface Props {
-  sender: Sender;
-  recipient: Sender;
-  body: string;
-  ts: string;
+import { Box, Typography, useTheme } from "@mui/material";
+import { Msg } from "@/types";
+
+interface Props extends Msg {
   self: boolean;
 }
 
-export const MessageBubble = ({ body, self, sender }: Props) => (
-  <div
-    className={clsx(
-      "rounded-2xl px-4 py-2 max-w-[80%] text-sm shadow",
-      self ? "ml-auto bg-primary text-primary-foreground" : "mr-auto bg-card"
-    )}
-  >
-    {!self && (
-      <span className="block text-xs font-medium mb-1 text-muted-foreground">
-        {sender === "A" ? "AI" : sender === "H" ? "Human" : "You"}
-      </span>
-    )}
-    {body}
-  </div>
-);
+export const MessageBubble = ({ body, self, sender }: Props) => {
+  const theme = useTheme();
+
+  const senderLabel = sender === "A"
+    ? "AI"
+    : sender === "H"
+    ? "Human"
+    : "You";
+
+  const align = self ? "flex-end" : "flex-start";
+  const bg = self
+    ? theme.palette.primary.main
+    : theme.palette.grey[200];
+  const textColor = self
+    ? theme.palette.primary.contrastText
+    : theme.palette.text.primary;
+
+  return (
+    <Box
+      display="flex"
+      flexDirection="column"
+      alignItems={align}
+      sx={{ maxWidth: "80%" }}
+    >
+      {!self && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ mb: 0.5 }}
+        >
+          {senderLabel}
+        </Typography>
+      )}
+
+      <Box
+        px={2}
+        py={1}
+        borderRadius={2}
+        sx={{
+          bgcolor: bg,
+          color: textColor,
+          boxShadow: 1,
+          wordBreak: "break-word",
+        }}
+      >
+        <Typography variant="body2">{body}</Typography>
+      </Box>
+    </Box>
+  );
+};

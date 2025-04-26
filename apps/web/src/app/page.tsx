@@ -1,16 +1,28 @@
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
+"use client";
 
-export default function Lobby() {
+import { Container, Typography, Button } from "@mui/material";
+import { useRouter } from "next/navigation";
+import styles from "@/styles/layout.module.css";
+
+export default function HomePage() {
+  const router = useRouter();
+
   return (
-    <main className="flex flex-col items-center gap-6">
-      <h1 className="text-3xl font-bold">Turing-Test Lobby</h1>
-
-      <Link href="/queue">
-        <Button size="lg">开始匹配</Button>
-      </Link>
-
-      {/* TODO: 排行榜 / 历史 Tab */}
-    </main>
+    <Container maxWidth="sm" className={styles.centered}>
+      <Typography variant="h3" gutterBottom>
+        图灵测试
+      </Typography>
+      <Typography variant="body1" color="text.secondary" gutterBottom>
+        你能分辨出聊天对象是人类还是 AI 吗？
+      </Typography>
+      <Button
+        variant="contained"
+        color="warning"
+        size="large"
+        onClick={() => router.push("/queue")}
+      >
+        开始游戏
+      </Button>
+    </Container>
   );
 }
