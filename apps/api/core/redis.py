@@ -21,9 +21,20 @@ async def pop_match():
     return None, None
 
 # 在聊天室中发布内容
-async def publish_chat(game_id: uuid.UUID, message: dict):
-    channel = f"room:{game_id}:{message['sender']}_{message['recipient']}"
-    await rdb.publish(channel, json.dumps(serialize_message(message), ensure_ascii=False))
+async def publish_chat(game_id: uuid.UUID, message: dict | str):
+    # 1️⃣ 计算频道 —— 需要 sender/recipient，所以拿 dict 版本
+    sender = message["sender"] if isinstance(message, dict) else "I"
+    recipient = message["recipient"] if isinstance(message, dict) else "A"
+
+    channel = f"room:{game_id}:{sender}_{recipient}"   # ✅ str
+
+    # 2️⃣ 准备 payload —— 确保只序列化一次
+    if isinstance(message, str):        # 已是 JSON 字符串
+        payload = message
+    else:                               # dict → JSON
+        payload = serialize_message(message)   # 内部一次 json.dumps
+
+    await rdb.publish(channel, payload)        # ✅ message 是 str
 
 # 设定房间状态 房间开始启用--->房间有效期失效
 async def set_room_state(game_id: str, **kv):
@@ -39,5 +50,5 @@ def serialize_message(message: dict) -> str:
             return o.isoformat()
         raise TypeError(f"Type {type(o)} not serializable")
 
-    return json.dumps(message, default=default)
+    return json.dumps(message, ensure_ascii=False)
 
