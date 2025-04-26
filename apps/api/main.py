@@ -1,6 +1,8 @@
 from fastapi import FastAPI
+from sqlalchemy.dialects.mysql import match
 from starlette.middleware.cors import CORSMiddleware
-from apps.api.routers import tests_database, matchmaker, chat, guess, ai_test
+
+from apps.api.routers import matchmaker, chat, guess, auth
 from apps.api.utils.lifespan import lifespan
 
 app = FastAPI(lifespan=lifespan)
@@ -24,8 +26,7 @@ app.add_middleware(
 )
 
 # ③ —— 挂载路由 ---------------------------------
-app.include_router(tests_database.router)
+app.include_router(auth.router, prefix="/api")
 app.include_router(matchmaker.router, prefix="/api")
 app.include_router(chat.router,        prefix="/api")
 app.include_router(guess.router,       prefix="/api")
-app.include_router(ai_test.router, prefix="/api")

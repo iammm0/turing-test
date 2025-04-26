@@ -1,6 +1,6 @@
 import asyncio, uuid, json, datetime as dt
 from typing import List, Dict
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 

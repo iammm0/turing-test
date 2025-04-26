@@ -1,22 +1,83 @@
 import uuid
-from typing import cast
+from typing import Optional, Sequence, Type
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 
 from apps.api.db import models
+from apps.api.db.models import User, Game, Message
 
 
 class UserService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_or_create(
-            self, user_id: uuid.UUID, elo: int = 1000
-    ) -> models.User:
+    async def get_or_create(self, user_id: uuid.UUID, elo: int = 1000) -> Type[User] | User:
+        """获取用户或创建新用户"""
         user = await self.db.get(models.User, user_id)
         if user:
-            return cast(models.User, user)      # 👈 告诉类型检查器它是实例
+            return user
+        # 如果用户不存在，创建新用户
         user = models.User(id=user_id, elo=elo)
         self.db.add(user)
-        await self.db.flush()      # 不 commit，留给上层事务
+        await self.db.flush()  # 不 commit，留给上层事务
         return user
+
+    async def get_user(self, user_id: uuid.UUID) -> Optional[models.User]:
+        """获取单个用户"""
+        user = await self.db.get(models.User, user_id)
+        return user
+
+    async def get_users(self, limit: int = 100, offset: int = 0) -> Sequence[User]:
+        """获取用户列表（支持分页）"""
+        stmt = select(models.User).limit(limit).offset(offset)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def update_user(self, user_id: uuid.UUID, display_name: Optional[str] = None,
+                          elo: Optional[int] = None) -> models.User:
+        """更新用户信息"""
+        stmt = select(models.User).where(models.User.id == user_id)
+        user = await self.db.execute(stmt)
+        user = user.scalar_one_or_none()
+        if not user:
+            raise ValueError("User not found")
+
+        if display_name is not None:
+            user.display_name = display_name
+        if elo is not None:
+            user.elo = elo
+
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def delete_user(self, user_id: uuid.UUID) -> bool:
+        """删除用户"""
+        stmt = select(models.User).where(models.User.id == user_id)
+        user = await self.db.execute(stmt)
+        user = user.scalar_one_or_none()
+        if not user:
+            raise ValueError("User not found")
+
+        await self.db.delete(user)
+        await self.db.commit()
+        return True
+
+    async def get_user_game_history(self, user_id: uuid.UUID) -> Sequence[Game]:
+        """获取用户的游戏历史记录"""
+        stmt = (
+            select(models.Game)
+            .join(models.User, models.User.id == models.Game.interrogator_id)
+            .filter(models.User.id == user_id)
+            .options(joinedload(models.Game.interrogator))
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_user_messages(self, user_id: uuid.UUID) -> Sequence[Message]:
+        """获取用户的消息记录"""
+        stmt = select(models.Message).filter(models.Message.sender == user_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
