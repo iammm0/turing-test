@@ -25,6 +25,7 @@ class Side(str, enum.Enum):
     AI    = "AI"
 
 class GameStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
     WAITING = "WAITING"
     CHAT    = "CHAT"
     JUDGED  = "JUDGED"

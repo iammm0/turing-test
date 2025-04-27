@@ -1,5 +1,4 @@
 import { api } from "./api";
-import {uuid} from "@/lib/utils";
 
 export const getCurrentUser = () => api.get("/users/me");
 

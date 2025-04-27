@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import React, { useState } from "react";
+import {login, register} from "@/lib/auth";
 
 export default function AuthDialog({
   open,
@@ -30,39 +31,25 @@ export default function AuthDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const formData = new URLSearchParams();
-    formData.append("email", email);
-    formData.append("password", password);
-    if (mode === "register") {
-      formData.append("display_name", displayName);
+    try {
+      let token;
+
+      if (mode === "login") {
+        token = await login(email, password);  // 调用 login 函数
+      } else {
+        token = await register(email, password, displayName);  // 调用 register 函数
+        if (!token) {
+          alert("注册成功，请手动登录");
+          setMode("login");
+          return;
+        }
+      }
+
+      onSuccessAction(token);  // 调用成功回调
+      onCloseAction();  // 关闭对话框
+    } catch (error: any) {
+      alert(error.message || "操作失败");
     }
-
-    const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
-    });
-
-    if (!response.ok) {
-      const msg = await response.text();
-      alert(msg || "操作失败");
-      return;
-    }
-
-    const data = await response.json();
-    const token = data.access_token ?? data.token;
-    if (!token) {
-      alert("注册成功，请手动登录");
-      setMode("login");
-      return;
-    }
-
-    onSuccessAction(token);
-    onCloseAction();
   };
 
   return (

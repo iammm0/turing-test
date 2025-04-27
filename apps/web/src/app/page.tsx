@@ -10,30 +10,24 @@ export default function HomePage() {
   const [openDialog, setOpenDialog] = useState(false); // 控制对话框的状态
   const router = useRouter();
 
-  // 页面加载时检查 token 是否有效
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token && !isTokenValid(token)) {
-      // 如果 token 无效，则清除 token
-      localStorage.removeItem("token");
-      alert("您的会话已过期，请重新登录。");
-    }
-  }, []); // 只在页面加载时运行一次
-
-  // 用户点击开始游戏时的处理逻辑
+  // 点击“开始游戏”时检查 access_token
   const handleStartGame = () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setOpenDialog(true); // 如果没有 token，就弹出登录/注册框
+    const token = localStorage.getItem("access_token");
+    if (!token || !isTokenValid(token)) {
+      // 如果没有 token 或 token 无效，弹出登录/注册框
+      localStorage.removeItem("access_token");
+      setOpenDialog(true);
     } else {
-      router.push("/queue"); // 如果有 token，直接跳转到匹配队列页面
+      // token 有效，跳转到匹配队列页面
+      router.push("/queue");
     }
   };
 
-  // 认证成功后，保存 token 并跳转
+  // 认证成功后，保存 access_token 并关闭对话框和跳转
   const handleAuthSuccess = (token: string) => {
-    localStorage.setItem("token", token); // 将 token 保存到 localStorage
-    router.push("/queue"); // 跳转到匹配队列
+    localStorage.setItem("access_token", token);
+    setOpenDialog(false);
+    router.push("/queue");
   };
 
   return (
@@ -54,7 +48,7 @@ export default function HomePage() {
       </Button>
 
       {/* 登录/注册对话框 */}
-      <AuthDialog open={openDialog} onClose={() => setOpenDialog(false)} onSuccess={handleAuthSuccess} />
+      <AuthDialog open={openDialog} onCloseAction={() => setOpenDialog(false)} onSuccessAction={handleAuthSuccess} />
     </Container>
   );
 }

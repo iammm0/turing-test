@@ -5,43 +5,39 @@ import datetime as dt
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:16379/0")
 rdb: redis.Redis = redis.from_url(REDIS_URL, decode_responses=True)  # decode_responses=True 省去手动 .decode()
 
-QUEUE_INTERROGATOR = "queue:interrogator"
-QUEUE_WITNESS      = "queue:witness"
+# 👉 改为单一队列
+QUEUE_MATCH = "queue:matchmaking"
+PENDING_MATCH = "pending:match:"  # append match_id
 
-async def push_queue(queue: str, user_id: uuid.UUID, elo: int):
-    user_key = f"user:{user_id}"
-
-    # ❌ 防止重复加入两个队列
-    other_queue = QUEUE_WITNESS if queue == QUEUE_INTERROGATOR else QUEUE_INTERROGATOR
-    if await rdb.zscore(other_queue, user_key):
-        print(f"⚠️ 用户 {user_id} 已在另一队列中，忽略加入 {queue}")
-        return
-
-    score = int(time.time()) + elo // 100
-    await rdb.zadd(queue, {user_key: score})
+async def push_queue(user_id: uuid.UUID):
+    """
+        将 user_id 加入指定的有序集合，score 基于时间戳 + elo/100 以兼顾先后与水平
+        """
+    member = f"user:{user_id}"
+    await rdb.lpush(QUEUE_MATCH, member)
 
 
-# 匹配测试对局
-async def pop_match():
-    i = await rdb.zpopmax(QUEUE_INTERROGATOR, count=1)
-    w = await rdb.zpopmax(QUEUE_WITNESS, count=1)
-
-    if not i or not w:
+async def pop_two():
+    """
+        从队列尾部取出两名玩家，实现 FIFO 匹配
+        返回两个 UUID，若不足两人返回 (None, None)
+    """
+    # 从尾部弹出（最早入队）
+    raw1 = await rdb.rpop(QUEUE_MATCH)
+    raw2 = await rdb.rpop(QUEUE_MATCH)
+    if not raw1 or not raw2:
+        # 如果任意一端取不到，放回已取出的
+        if raw1:
+            await rdb.rpush(QUEUE_MATCH, raw1)
         return None, None
-
-    iid = i[0][0].split(":")[1]
-    wid = w[0][0].split(":")[1]
-
-    # 🚫 禁止自己匹配自己
-    if iid == wid:
-        print(f"❌ 匹配失败：同一个玩家被匹配到了自己！id={iid}")
-        # 可选：重新放回 witness 队列
-        score = int(time.time()) + 11  # 给个新 score，防止无限被 pop
-        await rdb.zadd(QUEUE_WITNESS, {f"user:{wid}": score})
+    u1 = uuid.UUID(raw1.split(':')[1])
+    u2 = uuid.UUID(raw2.split(':')[1])
+    # 防止自己匹配自己
+    if u1 == u2:
+        # 放回一个
+        await rdb.lpush(QUEUE_MATCH, raw2)
         return None, None
-
-    return iid, wid
-
+    return u1, u2
 
 # 在聊天室中发布内容
 async def publish_chat(game_id: uuid.UUID, message: dict | str):
@@ -75,10 +71,5 @@ def serialize_message(message: dict) -> str:
 
     return json.dumps(message, ensure_ascii=False)
 
-async def log_queue_state():
-    i_list = await rdb.zrange(QUEUE_INTERROGATOR, 0, -1)
-    w_list = await rdb.zrange(QUEUE_WITNESS, 0, -1)
-    print("🧾 Interrogator Queue:", i_list)
-    print("🧾 Witness Queue:", w_list)
 
 

@@ -20,18 +20,39 @@ class Settings(BaseSettings):
     # -------- Redis --------
     REDIS_URL: str = Field(alias="REDIS_URL")
 
-    # -------- LLM / 其它 --------
+    # -------- 其它（例如 LLM） --------
     DEEPSEEK_API_KEY: str = Field(alias="DEEPSEEK_API_KEY")
+
+    # ----- 派生属性，方便其他模块直接拿 URL -----
+    @property
+    def database_url(self) -> str:
+        """
+        返回完整的 SQLAlchemy 异步连接 URL，
+        其他模块只需 import settings.database_url 即可。
+        """
+        return (
+            f"postgresql+asyncpg://"
+            f"{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@"
+            f"{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/"
+            f"{self.POSTGRES_DB}"
+        )
+
+    @property
+    def redis_url(self) -> str:
+        """
+        返回 Redis 连接 URL，供所有使用 redis 的地方直接引用。
+        """
+        return self.REDIS_URL
 
     # ----- pydantic-settings V2 配置 -----
     model_config = ConfigDict(
-        env_file=".env",  # 根目录 .env (local/dev/prod 皆可)
+        env_file=".env",              # 根目录 .env
         env_file_encoding="utf-8",
-        extra="ignore",  # 忽略未声明变量，防止将来加新变量报错
-        case_sensitive=True,  # 大小写严格区分
-        populate_by_name=True,  # 允许字段名或 alias 二选一（这里两者一致）
+        extra="ignore",               # 忽略未声明变量
+        case_sensitive=True,          # 严格区分大小写
+        populate_by_name=True,        # 支持字段名或 alias 二选一
     )
 
 
-# 单例
+# 在模块加载时就实例化一个单例，供全局引用
 settings = Settings()

@@ -40,4 +40,3 @@ redis_client: Redis = Redis.from_url(
 # 可选 FastAPI 依赖；不再每次关闭全局连接
 async def get_redis() -> Redis:
     yield redis_client
-

@@ -2,7 +2,7 @@ import datetime
 import datetime as dt
 import uuid
 from datetime import timedelta
-from typing import Type
+from typing import cast
 
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
@@ -12,7 +12,6 @@ from passlib.exc import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
-from apps.api.db import models
 from apps.api.db.models import User
 
 # 👇 随机字符串（只在服务端安全储存）
@@ -51,21 +50,25 @@ def decode_token(token: str):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 async def get_current_user(
-        token: str = Depends(oauth2_scheme),
-        db: AsyncSession = Depends(get_db)
-) -> Type[User]:
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:  # 返回 User 实例，而不是 Type[User]
+
+    # 1️⃣ 解码并校验 token
     payload = decode_token(token)
     if not payload or "sub" not in payload:
         raise HTTPException(status_code=401, detail="无效的认证凭据")
 
+    # 2️⃣ 转换成 UUID
     try:
         user_id = uuid.UUID(payload["sub"])
     except Exception:
         raise HTTPException(status_code=401, detail="无效的用户 ID")
 
-    # 确保用户是作为实例返回，而不是类类型
-    user = await db.get(models.User, user_id)
-    if not user:
+    # 3️⃣ 异步地从数据库拿到 User 实例
+    user = await db.get(User, user_id)
+    user = cast(User, user)  # 告诉类型检查器：这个确实是 User
+    if user is None:
         raise HTTPException(status_code=404, detail="用户不存在")
 
     return user

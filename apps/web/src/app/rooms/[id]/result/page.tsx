@@ -4,7 +4,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   Container,
   Typography,
-  Box,
   Button,
   Paper,
   Stack,

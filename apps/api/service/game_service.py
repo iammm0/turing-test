@@ -49,7 +49,7 @@ class GameService:
         )
         await self.db.commit()
 
-    async def finish_and_judge(self, game_id: uuid.UUID, suspect_ai: bool, user: models.User) -> models.Game | None:
+    async def finish_and_judge(self, game_id: uuid.UUID, suspect_ai: bool) -> models.Game | None:
         """结束游戏并判定 AI"""
         async with self.db.begin():  # 事务处理
             stmt = (
