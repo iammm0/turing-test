@@ -9,16 +9,39 @@ QUEUE_INTERROGATOR = "queue:interrogator"
 QUEUE_WITNESS      = "queue:witness"
 
 async def push_queue(queue: str, user_id: uuid.UUID, elo: int):
+    user_key = f"user:{user_id}"
+
+    # ❌ 防止重复加入两个队列
+    other_queue = QUEUE_WITNESS if queue == QUEUE_INTERROGATOR else QUEUE_INTERROGATOR
+    if await rdb.zscore(other_queue, user_key):
+        print(f"⚠️ 用户 {user_id} 已在另一队列中，忽略加入 {queue}")
+        return
+
     score = int(time.time()) + elo // 100
-    await rdb.zadd(queue, {f"user:{user_id}": score})
+    await rdb.zadd(queue, {user_key: score})
+
 
 # 匹配测试对局
 async def pop_match():
     i = await rdb.zpopmax(QUEUE_INTERROGATOR, count=1)
-    w = await rdb.zpopmax(QUEUE_WITNESS,      count=1)
-    if i and w:
-        return i[0][0].split(":")[1], w[0][0].split(":")[1]
-    return None, None
+    w = await rdb.zpopmax(QUEUE_WITNESS, count=1)
+
+    if not i or not w:
+        return None, None
+
+    iid = i[0][0].split(":")[1]
+    wid = w[0][0].split(":")[1]
+
+    # 🚫 禁止自己匹配自己
+    if iid == wid:
+        print(f"❌ 匹配失败：同一个玩家被匹配到了自己！id={iid}")
+        # 可选：重新放回 witness 队列
+        score = int(time.time()) + 11  # 给个新 score，防止无限被 pop
+        await rdb.zadd(QUEUE_WITNESS, {f"user:{wid}": score})
+        return None, None
+
+    return iid, wid
+
 
 # 在聊天室中发布内容
 async def publish_chat(game_id: uuid.UUID, message: dict | str):
@@ -51,4 +74,11 @@ def serialize_message(message: dict) -> str:
         raise TypeError(f"Type {type(o)} not serializable")
 
     return json.dumps(message, ensure_ascii=False)
+
+async def log_queue_state():
+    i_list = await rdb.zrange(QUEUE_INTERROGATOR, 0, -1)
+    w_list = await rdb.zrange(QUEUE_WITNESS, 0, -1)
+    print("🧾 Interrogator Queue:", i_list)
+    print("🧾 Witness Queue:", w_list)
+
 

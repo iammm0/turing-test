@@ -1,16 +1,16 @@
 "use client";
 
-import {
+import React, {
   createContext,
   useContext,
   useMemo,
 } from "react";
 import { useChatSocket } from "@/hooks/useChatSocket";
-import { Msg, Sender } from "@/types";
+import {Msg, OutgoingMsg, Sender} from "@/types";
 
 type ChatContextType = {
   messages: Msg[];
-  sendMessage: (msg: { sender: string; recipient: string; body: string }) => void;
+  sendMessage: (msg: OutgoingMsg) => void;
   status: "connecting" | "open" | "closed" | "error";
 };
 

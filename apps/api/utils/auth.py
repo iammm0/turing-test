@@ -6,9 +6,9 @@ from typing import Type
 
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt
-from jwt import InvalidTokenError, ExpiredSignatureError
+from jose import jwt, ExpiredSignatureError
 from passlib.context import CryptContext
+from passlib.exc import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db

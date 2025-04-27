@@ -21,9 +21,9 @@ export default function ChatDualPane() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [inputs, setInputs] = useState<Record<Recipient, string>>({
-    A: "",
-    H: "",
+    A: "", H: "", I: ""
   });
+
 
   const handleSend = (recipient: Recipient) => {
     const body = inputs[recipient].trim();
@@ -31,9 +31,10 @@ export default function ChatDualPane() {
 
     sendMessage({
       sender: "I",
-      recipient,
-      body,
+      recipient: "H", // or "A"
+      body: inputs[recipient].trim(),
     });
+
 
     setInputs((prev) => ({ ...prev, [recipient]: "" }));
   };

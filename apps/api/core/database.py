@@ -29,7 +29,7 @@ Base = declarative_base()
 # FastAPI 依赖
 async def get_db() -> AsyncSession:       # 返回值注解更直观
     async with AsyncSessionLocal() as session:
-        yield session                     # yield 后自动 close()
+        yield session # yield 后自动 close()
 
 # --------------------- Redis ---------------------
 redis_client: Redis = Redis.from_url(

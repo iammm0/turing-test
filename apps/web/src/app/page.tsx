@@ -3,30 +3,8 @@
 import { useEffect, useState } from "react";
 import { Container, Typography, Button } from "@mui/material";
 import { useRouter } from "next/navigation";
-import AuthDialog from "@/components/AuthDialog"; // 假设你有一个 AuthDialog 组件
+import AuthDialog from "@/components/AuthDialog";
 import styles from "@/styles/layout.module.css";
-
-// 手动解码 JWT 负载部分
-const decodeJwt = (token: string) => {
-  const base64Url = token.split('.')[1]; // 获取 JWT 中的第二部分（即负载部分）
-  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); // 转换为标准 Base64 格式
-  const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-  }).join(''));
-
-  return JSON.parse(jsonPayload); // 将负载部分解析为 JSON 对象
-};
-
-// 检查 token 是否有效
-const isTokenValid = (token: string) => {
-  try {
-    const decoded = decodeJwt(token); // 解码 JWT
-    const currentTime = Math.floor(Date.now() / 1000); // 获取当前时间戳
-    return decoded.exp > currentTime; // 检查 token 是否过期
-  } catch (error) {
-    return false; // 解码失败则认为 token 无效
-  }
-};
 
 export default function HomePage() {
   const [openDialog, setOpenDialog] = useState(false); // 控制对话框的状态
@@ -80,3 +58,25 @@ export default function HomePage() {
     </Container>
   );
 }
+
+// 手动解码 JWT 负载部分
+const decodeJwt = (token: string) => {
+  const base64Url = token.split('.')[1]; // 获取 JWT 中的第二部分（即负载部分）
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/'); // 转换为标准 Base64 格式
+  const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+  }).join(''));
+
+  return JSON.parse(jsonPayload); // 将负载部分解析为 JSON 对象
+};
+
+// 检查 token 是否有效
+const isTokenValid = (token: string) => {
+  try {
+    const decoded = decodeJwt(token); // 解码 JWT
+    const currentTime = Math.floor(Date.now() / 1000); // 获取当前时间戳
+    return decoded.exp > currentTime; // 检查 token 是否过期
+  } catch {
+    alert("Token 解码失败，您需要重新登录"); // 解码失败则认为 token 无效
+  }
+};
