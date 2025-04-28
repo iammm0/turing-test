@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
-from apps.api.db import models
-from apps.api.models.schemas import UserOut, UserCreate
+from apps.api.dao.user import User
+from apps.api.dto.user import UserCreate, UserOut
 from apps.api.utils.auth import get_password_hash, verify_password, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def register_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
     # 检查邮箱是否已存在
     existing_user = await db.execute(
-        select(models.User).where(models.User.email == data.email)
+        select(User).where(User.email == data.email)
     )
     existing_user = existing_user.scalar_one_or_none()
     if existing_user:
@@ -29,7 +29,7 @@ async def register_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
 
     # 这里可以加一些密码强度检查
     hashed_password = get_password_hash(data.password)
-    user = models.User(
+    user = User(
         id=uuid.uuid4(),
         email=data.email,
         display_name=data.display_name or "匿名玩家",
@@ -50,7 +50,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 
     # 查询用户
     q = await db.execute(
-        select(models.User).where(models.User.email == form_data.username)
+        select(User).where(User.email == form_data.username)
     )
     user = q.scalar_one_or_none()
 

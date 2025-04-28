@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
-from apps.api.models.schemas import UserCreate, UserOut, GameOut
+from apps.api.dto.game import GameOut
+from apps.api.dto.user import UserOut, UserCreate
 from apps.api.service.user_service import UserService
 
 router = APIRouter(prefix="/user", tags=["user"])

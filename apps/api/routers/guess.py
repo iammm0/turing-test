@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 from apps.api.core.database import get_db
-from apps.api.models.schemas import GameOut, GuessIn
+from apps.api.dto.game import GameOut
+from apps.api.dto.guess import GuessIn
 from apps.api.service.game_service import GameService
 
 router = APIRouter(prefix="/rooms", tags=["guess"])

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.routers import matchmaker, chat, guess, auth, ws_match
+from apps.api.routers import chat, guess, auth, ws_match
 from apps.api.utils.lifespan import lifespan
 
 app = FastAPI(lifespan=lifespan)
@@ -20,8 +20,9 @@ app.add_middleware(
 
 # ③ —— 挂载路由 ---------------------------------
 app.include_router(auth.router, prefix="/api")
-# app.include_router(matchmaker.router, prefix="/api")
+
 app.include_router(chat.router,        prefix="/api")
+
 app.include_router(guess.router,       prefix="/api")
 
 app.include_router(ws_match.router, prefix="/api")

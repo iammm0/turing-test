@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Container, Typography, Button } from "@mui/material";
 import { useRouter } from "next/navigation";
 import AuthDialog from "@/components/AuthDialog";

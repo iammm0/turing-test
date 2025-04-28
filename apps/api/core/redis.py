@@ -1,6 +1,9 @@
-import os, json, uuid, time
-import redis.asyncio as redis  # 👈 统一用 redis.asyncio
 import datetime as dt
+import json
+import os
+import uuid
+
+import redis.asyncio as redis  # 👈 统一用 redis.asyncio
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:16379/0")
 rdb: redis.Redis = redis.from_url(REDIS_URL, decode_responses=True)  # decode_responses=True 省去手动 .decode()

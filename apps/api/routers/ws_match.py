@@ -7,8 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from apps.api.core.config import settings
-from apps.api.db.models import Game, Side, GameStatus
-from apps.api.service.user_service import UserService
+from apps.api.service.game_service import GameService
 from apps.api.utils.auth import decode_token
 
 router = APIRouter()
@@ -46,33 +45,35 @@ async def ws_match(websocket: WebSocket):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.send_json({"action": "error", "detail": "Token 已过期，请重新登录"})
-        await websocket.close()
-        return
+        return await websocket.close()
     try:
         payload = decode_token(token)
         user_id = uuid.UUID(payload["sub"])
     except HTTPException:
-        await websocket.send_json({"action": "error", "detail": "Token 已过期，请重新登录"})
-        await websocket.close()
-        return
-
-    uid_str = str(user_id)
-    PLAYERS[uid_str] = websocket
+        await websocket.send_json({"action": "error", "detail": "Token 已过期或无效，请重新登录"})
+        return await websocket.close()
 
     # 3️⃣ 如果用户正在游戏中，拒绝排队并断开
-    if uid_str in ACTIVE_USERS:
+    if user_id in ACTIVE_USERS:
         await websocket.send_json({
             "action": "error",
             "detail": "您已有正在进行的对局，不能再次排队"
         })
-        await websocket.close()
-        PLAYERS.pop(uid_str, None)
-        return
+        return await websocket.close()
+
+    # 4️⃣ 注册玩家
+    uid_str = str(user_id)
+    PLAYERS[uid_str] = websocket
 
     try:
-        # 4️⃣ 主循环：接收客户端指令
+         # 主循环：接收客户端指令
         while True:
-            data = await websocket.receive_json()
+            try:
+                data = await websocket.receive_json()
+            except (WebSocketDisconnect, RuntimeError):
+                # 客户端断开或者主动 close，都走这里，退出循环
+                break
+
             action = data.get("action")
 
             if action == "join":
@@ -83,10 +84,9 @@ async def ws_match(websocket: WebSocket):
                         "action": "error",
                         "detail": "您已有正在进行的对局，不能再次排队"
                     })
-                    await websocket.close()
-                    PLAYERS.pop(uid_str, None)
-                    return
+                    return await websocket.close()
 
+                # 加入队列
                 if websocket not in QUEUE:
                     QUEUE.append(websocket)
 
@@ -95,63 +95,60 @@ async def ws_match(websocket: WebSocket):
                 if websocket in QUEUE:
                     QUEUE.remove(websocket)
 
-            elif action == "accept":
-                # 玩家接受匹配邀请
+            elif action in ("accept", "decline"):
                 match_id = data.get("match_id")
                 info = PENDING.get(match_id)
                 if not info:
                     continue
+
+                # 拒绝：取消定时、通知对方重排、关闭自己
+                if action == "decline":
+                    info["timer"].cancel()
+                    for other in info["others"]:
+                        if other!=uid_str and other in PLAYERS:
+                            await PLAYERS[other].send_json({"action": "requeue"})
+                            QUEUE.append(PLAYERS[other])
+                        return await websocket.close()
+
+                # 接受
                 info["accepted"].add(uid_str)
-                # 如果所有玩家都接受，则创建游戏
                 if info["accepted"] == set(info["users"]):
+                    # 双方都同意，取消定时，创建对局
                     info["timer"].cancel()
-                    await _create_game(info)
+                    await _finalize_match(match_id, info)
+                    # finalize 会 close，break 掉这个循环
+                    break
 
-            elif action == "decline":
-                # 玩家拒绝匹配
-                match_id = data.get("match_id")
-                info = PENDING.pop(match_id, None)
-                if info:
-                    # 取消超时定时
-                    info["timer"].cancel()
-                await websocket.send_json({"action": "declined"})
-                await websocket.close()
-                PLAYERS.pop(uid_str, None)
-                return
 
-    except WebSocketDisconnect:
-        # 客户端断开连接，清理状态
+    finally:
+        # 无论何种情况（断开、error、完成匹配），都要清理自己在 QUEUE / PLAYERS 中的痕迹
         if websocket in QUEUE:
             QUEUE.remove(websocket)
+
         PLAYERS.pop(uid_str, None)
 
 
 async def matchmaker_loop():
-    """
-    后台任务：每秒检查一次队列，若 >=2 人则配对并发送邀请
-    """
+    """后台任务：每秒检查队列，2人以上则配对并发 invite"""
     while True:
         await asyncio.sleep(1)
         if len(QUEUE) < 2:
             continue
 
-        # 从队列取出两个玩家
         ws1 = QUEUE.pop(0)
         ws2 = QUEUE.pop(0)
         uid1 = next(u for u, w in PLAYERS.items() if w is ws1)
         uid2 = next(u for u, w in PLAYERS.items() if w is ws2)
 
-        # 随机分配角色：I = 审讯者，W = 证人
+        # 随机分配角色
         if random.random() < 0.5:
             roles = {uid1: "I", uid2: "W"}
         else:
             roles = {uid2: "I", uid1: "W"}
 
         match_id = str(uuid.uuid4())
-        # 设置超时回调
         timer = asyncio.get_event_loop().call_later(
-            CONFIRM_WINDOW,
-            lambda: asyncio.create_task(_on_timeout(match_id))
+            CONFIRM_WINDOW, lambda: asyncio.create_task(_on_timeout(match_id))
         )
         PENDING[match_id] = {
             "users": [uid1, uid2],
@@ -160,8 +157,8 @@ async def matchmaker_loop():
             "timer": timer,
         }
 
-        # 向两位玩家发送匹配成功邀请
-        for uid in PENDING[match_id]["users"]:
+        # 发邀请
+        for uid in (uid1, uid2):
             ws = PLAYERS.get(uid)
             if ws:
                 await ws.send_json({
@@ -188,44 +185,44 @@ async def _on_timeout(match_id: str):
             PLAYERS.pop(uid, None)
 
 
-async def _create_game(info: dict):
+async def _finalize_match(match_id: str, info: dict):
     """
-    双方都 accept 后：创建 Game，标记 ACTIVE_USERS，推送 matched 并断开
+    双方 accept 后：
+      1) 创建 Game 并标记 ACTIVE_USERS
+      2) 通知客户端 matched，并 close WS
+      3) 清理 PENDING
     """
-    # 1) 将用户标记为“正在游戏中”
+    # 标记正在游戏
     for uid in info["users"]:
         ACTIVE_USERS.add(uid)
 
-    # 2) 在数据库中创建 Game
+    # 创建 Game
     async with AsyncSessionLocal() as db:
-        svc = UserService(db)
-        # 审讯者与证人 UUID
-        i_uid = uuid.UUID(next(u for u, r in info["roles"].items() if r == "I"))
-        w_uid = uuid.UUID(next(u for u, r in info["roles"].items() if r == "W"))
-        await svc.get_or_create(i_uid)
-        await svc.get_or_create(w_uid)
+        gs = GameService(db)
+        game = await gs.create_and_start_game(info["roles"])
 
-        game = Game(
-            interrogator_id=i_uid,
-            witness_human_id=w_uid,
-            witness_ai=False,
-            side=Side.HUMAN,
-            status=GameStatus.ACTIVE,
-        )
-        db.add(game)
-        await db.commit()
-        await db.refresh(game)
-
-    # 3) 通知双方进入，并断开各自连接
+    # 通知并断开
     for uid in info["users"]:
         ws = PLAYERS.get(uid)
-        if ws:
-            await ws.send_json({
-                "action": "matched",
-                "game_id": str(game.id)
-            })
-            await ws.close()            # 匹配成功后断开连接
-            PLAYERS.pop(uid, None)
+        if not ws:
+            continue
 
-    # 4) 清理 PENDING
-    PENDING.pop(info, None)
+        # ① 提示
+        await ws.send_json({
+            "action": "game_starting",
+            "game_id": str(game.id),
+            "detail": "匹配成功，正在进入对局…"
+        })
+        await asyncio.sleep(1)
+
+        # ② 真正进入
+        await ws.send_json({
+            "action": "matched",
+            "game_id": str(game.id)
+        })
+
+        await ws.close()
+        PLAYERS.pop(uid, None)
+
+    # 清理掉 pending 条目
+    PENDING.pop(match_id, None)

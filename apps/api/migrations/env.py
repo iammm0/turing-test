@@ -6,6 +6,8 @@ import sys, pathlib
 
 from dotenv import load_dotenv
 
+from apps.api.dao.base import Base
+
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.append(str(ROOT))   # 把 turing-test 加到 sys.path
 
@@ -23,7 +25,6 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from apps.api.core.database import DATABASE_URL
-from apps.api.db.models import Base
 
 # 假设 alembic/ 在项目根的子目录
 BASE = os.path.dirname(os.path.dirname(__file__))

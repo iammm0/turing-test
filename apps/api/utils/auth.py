@@ -12,7 +12,7 @@ from passlib.exc import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
-from apps.api.db.models import User
+from apps.api.dao.user import User
 
 # 👇 随机字符串（只在服务端安全储存）
 SECRET_KEY = "your-secret-key"

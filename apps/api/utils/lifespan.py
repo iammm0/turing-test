@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from apps.api.core.database import engine, redis_client
-from apps.api.db.models import Base
+from apps.api.dao.base import Base
 from apps.api.routers.ws_match import matchmaker_loop
 
 

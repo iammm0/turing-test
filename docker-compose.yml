@@ -10,7 +10,7 @@ services:
   api:
     build: { context: ., dockerfile: docker/api.Dockerfile }
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/turing_test
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@dao:5432/turing_test
       - REDIS_URL=redis://redis:6379/0
     depends_on: [db, redis]
     networks: [proxy, internal]
