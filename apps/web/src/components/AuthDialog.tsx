@@ -47,8 +47,8 @@ export default function AuthDialog({
 
       onSuccessAction(token);  // 调用成功回调
       onCloseAction();  // 关闭对话框
-    } catch (error: any) {
-      alert(error.message || "操作失败");
+    } catch {
+      alert("操作失败");
     }
   };
 
