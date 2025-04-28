@@ -1,17 +1,10 @@
 from fastapi import FastAPI
-from sqlalchemy.dialects.mysql import match
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.routers import matchmaker, chat, guess, auth, ws_match
 from apps.api.utils.lifespan import lifespan
 
 app = FastAPI(lifespan=lifespan)
-
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    # 如果以后有正式域名，添加到这里
-]
 
 # ② —— 全局中间件、CORS 等可在这里添加 ----------
 app.add_middleware(

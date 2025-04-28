@@ -45,13 +45,15 @@ async def ws_match(websocket: WebSocket):
     # 2️⃣ 从 query 参数读取并验证 token
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.close(code=1008)
+        await websocket.send_json({"action": "error", "detail": "Token 已过期，请重新登录"})
+        await websocket.close()
         return
     try:
         payload = decode_token(token)
         user_id = uuid.UUID(payload["sub"])
     except HTTPException:
-        await websocket.close(code=1008)
+        await websocket.send_json({"action": "error", "detail": "Token 已过期，请重新登录"})
+        await websocket.close()
         return
 
     uid_str = str(user_id)
