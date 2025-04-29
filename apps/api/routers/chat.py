@@ -1,6 +1,7 @@
 import asyncio
 import datetime as dt
 import json
+import random
 import uuid
 from pathlib import Path
 from typing import Dict
@@ -17,6 +18,7 @@ from apps.api.dao.message import Message
 from apps.api.dao.sender import SenderRole
 from apps.api.service.deepseek_service import DeepSeekClient
 from apps.api.service.prompt_builders.prompt_builder import make_prompt_builder
+from apps.api.utils.process_reply import post_process_reply
 
 # 握手 & 校验：await ws.accept() + 验证 Game 存在。
 # 双通道：I 订阅 A→I、H→I；A 订阅 I→A；H 订阅 I→H。
@@ -75,6 +77,7 @@ async def chat_socket(
     """
     # ── 1. 握手并接受 WebSocket 连接 ──
     await ws.accept()
+    prev_len = 0  # 前一条消息长度，初始为 0
 
     # ── 2. 校验对局存在 ──
     game = await db.get(Game, game_id)
@@ -159,14 +162,27 @@ async def chat_socket(
                     # 2) 调用 llm 生成回复
                     ai_reply = await _llm.chat_reply(history_rows, packet["body"])
 
+                    n_char = len(ai_reply)
+                    n_char_prev = prev_len
+
+                    delay = (
+                        1.0
+                        + random.normalvariate(0.3, 0.03) * n_char
+                        + random.normalvariate(0.03, 0.003) * n_char_prev
+                        + random.gammavariate(2.5, 0.25)
+                    )
+
                     # 3) 构造 AI 消息
                     ai_ts = dt.datetime.now(dt.UTC)
                     ai_msg = {
                         "sender": SenderRole.A.value,
                         "recipient": SenderRole.I.value,
-                        "body": ai_reply,
+                        "body": post_process_reply(ai_reply),
                         "ts": ai_ts.isoformat(),
                     }
+
+                    # 等待模拟用户打字、阅读和思考的时间
+                    await asyncio.sleep(delay)
 
                     # 4) 发布 & 存库
                     await publish_chat(game_id, ai_msg)
@@ -178,6 +194,8 @@ async def chat_socket(
                         ts=ai_ts,
                     ))
                     await db.commit()
+                    # 更新前一条消息长度
+                    prev_len = n_char
 
             # ── 猜测逻辑 ──
             elif action == "guess":

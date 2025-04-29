@@ -8,7 +8,7 @@ import httpx
 from apps.api.dao.message import Message
 from apps.api.service.prompt_builders.prompt_builder import PromptBuilder
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-5399ca53700149b49e7830e6bdb4f5cf")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-f64fd4c9d29643b5baa0344619cfd950")
 MODEL = "deepseek-chat"
 API_BASE = "https://api.deepseek.com"
 ENDPOINT = "/v1/chat/completions"
@@ -60,8 +60,8 @@ class DeepSeekClient:
         self,
         history: Sequence[Message],
         user_input: str,
-        temperature: float = 0.7,
-        max_tokens: int = 100,
+        temperature: float = 1.3,
+        max_tokens: int = 15,
     ) -> str:
         """
         完整接口：给定 ORM history + 本轮用户输入
@@ -101,8 +101,8 @@ class DeepSeekClient:
         self,
         history: Sequence[Message],
         user_input: str,
-        temperature: float = 0.7,
-        max_tokens: int = 100,
+        temperature: float = 1.3,
+        max_tokens: int = 15,
     ) -> str:
         """
         便捷别名，直接调用 complete
