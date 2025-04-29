@@ -196,10 +196,27 @@ async def _finalize_match(match_id: str, info: dict):
     for uid in info["users"]:
         ACTIVE_USERS.add(uid)
 
+    roles = info["roles"]
+
+    # 2) 准备参数
+    roles = info["roles"]
+    inviter_id_str = next(u for u, r in roles.items() if r == "I")
+    human_id_str = next(u for u, r in roles.items() if r == "W")
+    ai_id_str = None  # 如果你有专门的 AI 用户，可以从 settings 拿
+
+    # 转 UUID
+    inviter_id = uuid.UUID(inviter_id_str)
+    human_id = uuid.UUID(human_id_str)
+    ai_witness_id = uuid.UUID(ai_id_str) if ai_id_str else None
+
     # 创建 Game
     async with AsyncSessionLocal() as db:
         gs = GameService(db)
-        game = await gs.create_and_start_game(info["roles"])
+        game = await gs.create_and_start_game(
+            interrogator_id=inviter_id,
+            human_witness_id=human_id,
+            ai_witness_id=ai_witness_id,
+        )
 
     # 通知并断开
     for uid in info["users"]:

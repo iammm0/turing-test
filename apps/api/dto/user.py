@@ -2,7 +2,6 @@ import uuid
 
 from pydantic import BaseModel, EmailStr
 
-
 class UserOut(BaseModel):
     id: uuid.UUID
     display_name: str | None

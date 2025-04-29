@@ -4,23 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
-from apps.api.dto.game import GameOut
 from apps.api.dto.user import UserOut, UserCreate
 from apps.api.service.user_service import UserService
 
 router = APIRouter(prefix="/user", tags=["user"])
-
-# 获取用户的游戏历史记录
-@router.get("/{user_id}/games", response_model=list[GameOut], summary="获取用户的游戏历史")
-async def get_user_game_history(
-    user_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),            # ✅ 注入 AsyncSession
-):
-    user_service = UserService(db)                 # ✅ 用 session 实例构造 Service
-    games = await user_service.get_user_game_history(user_id)
-    if not games:
-        raise HTTPException(status_code=404, detail="No games found for this user")
-    return games
 
 # 获取用户详细信息
 @router.get("/{user_id}", response_model=UserOut, summary="获取用户详情")

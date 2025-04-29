@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from apps.api.dao import models
 from apps.api.dao.game import Game
 from apps.api.dao.message import Message
 from apps.api.dao.user import User

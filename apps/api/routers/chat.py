@@ -2,7 +2,8 @@ import asyncio
 import datetime as dt
 import json
 import uuid
-from typing import List, Dict
+from pathlib import Path
+from typing import Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy import select
@@ -11,128 +12,218 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.core.database import get_db
 from apps.api.core.redis import rdb, publish_chat
 from apps.api.dao.game import Game
+from apps.api.dao.guess import Guess  # ← 用于存储审讯者的猜测
 from apps.api.dao.message import Message
 from apps.api.dao.sender import SenderRole
 from apps.api.service.deepseek_service import DeepSeekClient
+from apps.api.service.prompt_builders.prompt_builder import make_prompt_builder
+
+# 握手 & 校验：await ws.accept() + 验证 Game 存在。
+# 双通道：I 订阅 A→I、H→I；A 订阅 I→A；H 订阅 I→H。
+# 消息分发：
+# 收到 action="message"
+# 校验字段 & 角色
+# 发布到 Redis → 其他客户端中继
+# 写入 messages 表
+# 若 I→A，则构造上下文调用 LLM，生成 AI 回答并走同样流程
+# 猜测流程：
+# action="guess" 且仅 I 可调用
+# 提交 suspect_ai_id / suspect_human_id / interrogator_id
+# 对比 Game 中存的真实证人
+# 写入 guesses 表 + 返回 {action:"guess_result",is_correct}
+# 断线处理：停止中继任务并取消 Redis 订阅。
 
 router = APIRouter(prefix="/ws", tags=["chat"])
-llm = DeepSeekClient()
 
-# ────────────────────────────────────────────────────────
+# 创建 PromptBuilder
+prompt_builder = make_prompt_builder()
+
+# ⚙️ 在模块级别创建 DeepSeekClient 实例，内置各类 PromptBuilder
+_llm = DeepSeekClient(
+    prompt_builder=prompt_builder,
+)
+
 @router.websocket(
     "/rooms/{game_id}/{role}",
-    name="房间内实时聊天；按 sender_recipient 分双通道",
+    name="房间内实时聊天；按 sender_recipient 分双通道"
 )
 async def chat_socket(
     ws: WebSocket,
     game_id: uuid.UUID,
-    role: SenderRole,                                 # I / A / H
+    role: SenderRole,              # I / A / H
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    WebSocket 端点说明：
+    - 路径参数：
+        game_id: 对局 UUID
+        role:    连接角色：I(Interrogator)/A(AI)/H(Human witness)
+    - 功能：
+      1. 验证对局是否存在，否则 4404 关闭。
+      2. 按角色订阅对应的 Redis 频道，实时转发消息。
+      3. 接收两类客户端消息：
+         a. 聊天消息 (action="message")
+            - 发布到 Redis
+            - 存入 messages 表
+            - 如果是 I→A，还要调用 LLM 生成 AI 回复
+         b. 猜测 (action="guess") —— 仅限审讯者
+            - 验证 payload
+            - 判断猜测是否正确
+            - 存入 guesses 表
+            - 返回猜测结果
+    4. 处理客户端断连，清理后台任务与订阅。
+    """
+    # ── 1. 握手并接受 WebSocket 连接 ──
     await ws.accept()
 
-    # ------- 校验游戏存在 -------
-    game: Game | None = await db.get(Game, game_id)
+    # ── 2. 校验对局存在 ──
+    game = await db.get(Game, game_id)
     if not game:
+        # 对局不存在 -> 关闭连接并返回
         await ws.close(code=4404)
         return
 
-    # ------- 确定订阅通道 -------
+    # ── 3. 按角色订阅对应 Redis 频道 ──
+    # 审讯者 I 要接收来自 AI(A) 和 人类(H) 的消息
     if role == SenderRole.I:
         channels = [f"room:{game_id}:A_I", f"room:{game_id}:H_I"]
+    # AI 只接收 I 发送的消息
     elif role == SenderRole.A:
         channels = [f"room:{game_id}:I_A"]
+    # 人类证人 只接收 I 发送的消息
     else:
         channels = [f"room:{game_id}:I_H"]
 
     pubsub = rdb.pubsub()
     await pubsub.subscribe(*channels)
 
+    # 后台任务：持续监听 Redis，将收到的消息转给前端
     async def relay():
         async for msg in pubsub.listen():
             if msg["type"] == "message":
+                # msg["data"] 是字符串，直接发给 ws
                 await ws.send_text(msg["data"])
 
     relay_task = asyncio.create_task(relay())
 
     try:
+        # 主循环：处理前端发来的消息
         while True:
-            text_raw = await ws.receive_text()
-            msg_in: Dict = json.loads(text_raw)
-            # 必须包含 sender / recipient / body
-            if {"sender", "recipient", "body"} - msg_in.keys():
-                await ws.send_text(json.dumps({"error": "invalid payload"}))
-                continue
+            raw = await ws.receive_text()      # 阻塞直到收到文本
+            packet: Dict = json.loads(raw)     # 解析 JSON
+            action = packet.get("action")
 
-            # 权限校验：当前连接只能发送自己身份
-            if msg_in["sender"] != role.value:
-                await ws.send_text(json.dumps({"error": "sender mismatch"}))
-                continue
+            # ── 聊天消息逻辑 ──
+            if action == "message":
+                # 校验必需字段
+                if {"sender", "recipient", "body"} - packet.keys():
+                    await ws.send_text(json.dumps({"error": "invalid message payload"}))
+                    continue
 
-            # 时间戳
-            now_dt = dt.datetime.now(dt.UTC)
-            msg_in["ts"] = now_dt.isoformat()
+                # 确保发送者角色和 WebSocket 绑定角色一致
+                if packet["sender"] != role.value:
+                    await ws.send_text(json.dumps({"error": "sender mismatch"}))
+                    continue
 
-            # ---------- 广播 ----------
-            await publish_chat(game_id, msg_in)
+                # 时间戳
+                now = dt.datetime.now(dt.UTC)
+                packet["ts"] = now.isoformat()
 
-            # ---------- 持久化 ----------
-            db.add(
-                Message(
+                # a) 发布到 Redis，让其他通道订阅者收到
+                await publish_chat(game_id, packet)
+
+                # b) 持久化到数据库
+                db.add(Message(
                     game_id=game_id,
-                    sender=SenderRole(msg_in["sender"]),
-                    recipient=SenderRole(msg_in["recipient"]),
-                    body=msg_in["body"],
-                    ts=now_dt,
-                )
-            )
-            await db.commit()
+                    sender=SenderRole(packet["sender"]),
+                    recipient=SenderRole(packet["recipient"]),
+                    body=packet["body"],
+                    ts=now,
+                ))
+                await db.commit()
 
-            # ---------- AI 生成 ----------
-            if msg_in["sender"] == "I" and msg_in["recipient"] == "A":
-                # ① 构建 I↔A 历史
-                stmt = (
-                    select(Message)
-                    .where(
-                        Message.game_id == game_id,
-                        Message.sender.in_([SenderRole.I, SenderRole.A]),
-                        Message.recipient.in_([SenderRole.I, SenderRole.A]),
+                # c) 如果是 I→A，触发 AI 回复
+                if packet["sender"] == SenderRole.I.value and packet["recipient"] == SenderRole.A.value:
+                    # 1) 拉取历史
+                    stmt = (
+                        select(Message)
+                        .where(
+                            Message.game_id == game_id,
+                            Message.sender.in_([SenderRole.I, SenderRole.A]),
+                            Message.recipient.in_([SenderRole.I, SenderRole.A]),
+                        )
+                        .order_by(Message.ts)
                     )
-                    .order_by(Message.ts)
-                )
-                rows = (await db.execute(stmt)).scalars().all()
+                    history_rows = (await db.execute(stmt)).scalars().all()
 
-                history: List[Dict[str, str]] = [
-                    {"role": "system", "content": "你是18岁可爱女孩云遥..."}
-                ]
-                for m in rows:
-                    role_tag = "user" if m.sender == SenderRole.I else "assistant"
-                    history.append({"role": role_tag, "content": m.body})
-                history.append({"role": "user", "content": msg_in["body"]})
+                    # 2) 调用 llm 生成回复
+                    ai_reply = await _llm.chat_reply(history_rows, packet["body"])
 
-                # ② 调 LLM
-                ai_reply = await llm.complete(history)
+                    # 3) 构造 AI 消息
+                    ai_ts = dt.datetime.now(dt.UTC)
+                    ai_msg = {
+                        "sender": SenderRole.A.value,
+                        "recipient": SenderRole.I.value,
+                        "body": ai_reply,
+                        "ts": ai_ts.isoformat(),
+                    }
 
-                # ③ 广播 & 写库
-                ai_dt = dt.datetime.now(dt.UTC)
-                ai_msg = {
-                    "sender": "A",
-                    "recipient": "I",
-                    "body": ai_reply,
-                    "ts": ai_dt.isoformat(),
-                }
-                await publish_chat(game_id, ai_msg)
-                db.add(
-                    Message(
+                    # 4) 发布 & 存库
+                    await publish_chat(game_id, ai_msg)
+                    db.add(Message(
                         game_id=game_id,
                         sender=SenderRole.A,
                         recipient=SenderRole.I,
                         body=ai_reply,
-                        ts=ai_dt,
-                    )
-                )
+                        ts=ai_ts,
+                    ))
+                    await db.commit()
+
+            # ── 猜测逻辑 ──
+            elif action == "guess":
+                # 仅审讯者可猜
+                if role != SenderRole.I:
+                    await ws.send_text(json.dumps({"error": "只有审讯者可以猜解"}))
+                    continue
+
+                # 猜测 payload 校验
+                if {"suspect_ai_id", "suspect_human_id", "interrogator_id"} - packet.keys():
+                    await ws.send_text(json.dumps({"error": "invalid guess payload"}))
+                    continue
+
+                # 解析 UUID
+                try:
+                    ai_id = uuid.UUID(packet["suspect_ai_id"])
+                    hu_id = uuid.UUID(packet["suspect_human_id"])
+                    iq_id = uuid.UUID(packet["interrogator_id"])
+                except Exception:
+                    await ws.send_text(json.dumps({"error": "invalid UUID in guess"}))
+                    continue
+
+                # 判断正确性：比对数据库中真实存储
+                correct = (ai_id == game.witness_ai_id and hu_id == game.witness_human_id)
+
+                # 存入 guesses 表
+                db.add(Guess(
+                    game_id=game_id,
+                    interrogator_id=iq_id,
+                    guessed_ai_id=ai_id,
+                    guessed_human_id=hu_id,
+                    is_correct=correct,
+                ))
                 await db.commit()
 
+                # 返回猜测结果
+                await ws.send_json({
+                    "action": "guess_result",
+                    "is_correct": correct
+                })
+
+            # ── 无效 action ──
+            else:
+                await ws.send_text(json.dumps({"error": "unknown action"}))
+
     except WebSocketDisconnect:
+        # 客户端断开：取消中继任务、注销订阅
         relay_task.cancel()
         await pubsub.close()

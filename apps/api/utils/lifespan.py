@@ -12,6 +12,7 @@ async def lifespan(app: FastAPI):
     # ──────────── 🚀 Startup ────────────
     print("📦 正在创建 / 校验 PostgreSQL 表结构…")
     async with engine.begin() as conn:
+        # await conn.run_sync(Base.metadata.drop_all)  # ← 删
         await conn.run_sync(Base.metadata.create_all)
     print("✅ PostgreSQL 表已就绪")
 
