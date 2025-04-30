@@ -16,7 +16,7 @@ from apps.api.dao.game import Game
 from apps.api.dao.guess import Guess  # ← 用于存储审讯者的猜测
 from apps.api.dao.message import Message
 from apps.api.dao.sender import SenderRole
-from apps.api.service.deepseek_service import DeepSeekClient
+from apps.api.service.llm_service import DeepSeekClient, Grok3Client
 from apps.api.service.prompt_builders.prompt_builder import make_prompt_builder
 from apps.api.utils.process_reply import post_process_reply
 
@@ -41,8 +41,13 @@ router = APIRouter(prefix="/ws", tags=["chat"])
 prompt_builder = make_prompt_builder()
 
 # ⚙️ 在模块级别创建 DeepSeekClient 实例，内置各类 PromptBuilder
-_llm = DeepSeekClient(
-    prompt_builder=prompt_builder,
+# _llm = DeepSeekClient(
+#     prompt_builder=prompt_builder,
+# )
+
+_llm = Grok3Client(
+    prompt_builder,
+    api_key="sk-ykFU3QyxG9LpZdLRe4acHdKvQFVBWmUQbeqDBolLq14CdhK0"
 )
 
 @router.websocket(

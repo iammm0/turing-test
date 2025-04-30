@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.routers import chat, auth, ws_match
+from apps.api.routers import chat, auth, ws_match, grok3_test
 from apps.api.utils.lifespan import lifespan
 
 app = FastAPI(lifespan=lifespan)
@@ -24,3 +24,5 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(chat.router,        prefix="/api")
 
 app.include_router(ws_match.router, prefix="/api")
+
+app.include_router(grok3_test.router, prefix="/api")
