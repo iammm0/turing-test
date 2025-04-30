@@ -29,10 +29,10 @@
 │   │   ├── __init__.py
 │   │   ├── alembic.ini
 │   │   ├── core
-│   │   ├── db
+│   │   ├── dto
 │   │   ├── main.py
 │   │   ├── migrations
-│   │   ├── models
+│   │   ├── dao
 │   │   ├── routers
 │   │   ├── service
 │   │   └── utils
@@ -48,6 +48,8 @@
 │       ├── public
 │       ├── src
 │       └── tsconfig.json
+   └── prompts
+        ├── system.json
 ├── docker
 │   ├── api.Dockerfile
 │   └── web.Dockerfile
@@ -141,29 +143,29 @@ npm run dev
 
 1.  用户认证
 
-注册 `/api/auth/register`
+- 注册 `/api/auth/register`
 
-登录 `/api/auth/login`
+- 登录 `/api/auth/login`
 
-JWT 令牌管理 (有效期 30 天)
+- JWT 令牌管理 (有效期 30 天)
 
 
 
 2. 匹配系统
 
-握手：`ws://…/api/ws/match?token=…`
+- 握手：`ws://…/api/ws/match?token=…`
 
-```
-join`→`match_found`→`accept/decline`→`matched
+```bash
+`join`→`match_found`→`accept/decline`→`matched
 ```
 
 
 
 3. 游戏流程
 
-玩家确认后创建 `Game`
+- 玩家确认后创建 `Game`
 
-不同状态：`WAITING`→`ACTIVE`→`CHAT`→`JUDGED`→`ENDED`
+- 不同状态：`WAITING`→`ACTIVE`→`CHAT`→`JUDGED`→`ENDED`
 
 
 
@@ -171,32 +173,66 @@ join`→`match_found`→`accept/decline`→`matched
 
 1. ### HTTP Endpoints
 
-| 方法 |         路径          |      描述      |
-| :--: | :-------------------: | :------------: |
-| POST |  /api/auth/register   |    用户注册    |
-| POST |    /api/auth/login    |    用户登录    |
-| POST | /api/rooms/{id}/guess | 审讯者提交判定 |
+| 方法 |        路径        |   描述   |           字段准备            |
+| :--: | :----------------: | :------: | :---------------------------: |
+| POST | /api/auth/register | 用户注册 | email, display_name, password |
+| POST |  /api/auth/login   | 用户登录 |        email, password        |
 
 2. ### WebSocket 消息格式
+
+进入匹配队列 WebSocket 连接：
+
+```
+ws://127.0.0.1:8000/api/ws/match?token=<access_token>
+```
+
+进入测试房间 WebSocket 连接
+
+```
+# 审讯者进入游戏
+ws://127.0.0.1:8000/api/ws/rooms/<game_id>/I?token=<access_token>
+# 人类证人进入游戏
+ws://127.0.0.1:8000/api/ws/rooms/<game_id>/H?token=<access_token>
+# AI证人进入游戏
+ws://127.0.0.1:8000/api/ws/rooms/<game_id>/I
+```
 
 #### 客户端→服务端
 
 - 加入匹配队列
 
 ```json
-{ "action": "join" }
+{ 
+  "action": "join"
+}
 ```
 
 - 接受进入对局
 
 ```json
-{ "action": "accept", "match_id": "..." }
+{ 
+  "action": "accept",
+  "match_id": "..."
+}
 ```
 
 - 拒绝进入对局
 
 ```json
-{ "action": "decline", "match_id": "..." }
+{ 
+  "action": "decline", 
+  "match_id": "..."
+}
+```
+
+- 向目标角色发送消息帧
+```json
+{
+  "sender": "H | I",
+  "recipient": "H | I | A",
+  "body": "...",
+  "ts": "datatime.now(UTC)"
+}
 ```
 
 #### 服务端→客户端
@@ -204,18 +240,37 @@ join`→`match_found`→`accept/decline`→`matched
 - 对局匹配成功，系统分配对局与游戏
 
 ```json
-{ "action": "match_found", "match_id": "...", "role": "I|W", "window": 60 }
+{ 
+  "action": "match_found",
+  "match_id": "...",
+  "role": "I|W",
+  "window": 60
+}
 ```
 
 - 系统已经为玩家匹配到对局，等待玩家确认后开始
 
 ```json
-{ "action": "matched", "game_id": "..." }
+{ 
+  "action": "matched",
+  "game_id": "..."
+}
 ```
 
 - 对局等待玩家响应超时，玩家从匹配队列长链接中断开
 
-```
-{ "action": "error",   "detail": "..." }
+```json
+{ 
+  "action": "error",
+  "detail": "..."
+}
 ```
 
+- 对局双方同意接受对局，系统发出游戏准备状态中的提示
+```json
+{
+  "action": "game_starting",
+  "game_id": "...",
+  "detail": "匹配成功，正在进入对局…"
+}
+```
