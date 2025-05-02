@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Container, Typography, Button } from "@mui/material";
 import { useRouter } from "next/navigation";
-import AuthDialog from "@/components/AuthDialog";
+import AuthDialog from "@/components/ui/AuthDialog";
 import styles from "@/styles/layout.module.css";
 
 export default function HomePage() {
@@ -48,7 +48,7 @@ export default function HomePage() {
       </Button>
 
       {/* 登录/注册对话框 */}
-      <AuthDialog open={openDialog} onCloseAction={() => setOpenDialog(false)} onSuccessAction={handleAuthSuccess} />
+      <AuthDialog open={openDialog} onCloseAction={() => setOpenDialog(false)}/>
     </Container>
   );
 }

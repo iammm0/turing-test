@@ -1,4 +1,3 @@
-# apps/api/dao/user.py
 import uuid
 import datetime as dt
 from typing import Optional, List

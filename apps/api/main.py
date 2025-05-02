@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 
 from apps.api.routers import chat, auth, ws_match, grok3_test
 from apps.api.utils.lifespan import lifespan

@@ -2,12 +2,12 @@ import uuid
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
 from apps.api.dao.user import User
+from apps.api.dto.auth import LoginRequest
 from apps.api.dto.user import UserCreate, UserOut
 from apps.api.utils.auth import get_password_hash, verify_password, create_access_token
 
@@ -43,21 +43,32 @@ async def register_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
-    # 确保提供了用户名和密码
-    if not form_data.username or not form_data.password:
+async def login(
+        creds: LoginRequest,
+        db: AsyncSession = Depends(get_db)
+):
+    # ① 非空校验
+    if not creds.email or not creds.password:
         raise HTTPException(status_code=400, detail="用户名和密码不能为空")
 
-    # 查询用户
+    # ② 查用户
     q = await db.execute(
-        select(User).where(User.email == form_data.username)
+        select(User).where(User.email == creds.email)
     )
     user = q.scalar_one_or_none()
 
-    if not user or not user.password_hash or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(401, detail="用户名或密码错误")
+    # ③ 验证
+    if (
+            not user
+            or not user.password_hash
+            or not verify_password(creds.password, user.password_hash)
+    ):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    # 生成JWT令牌，设置过期时间为1小时（可根据需求调整）
-    token = create_access_token(data={"sub": str(user.id)}, expires_delta=timedelta(hours=1))
+    # ④ 签发 JWT（1 小时后过期）
+    token = create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=timedelta(hours=1),
+    )
     return {"access_token": token, "token_type": "bearer"}
 

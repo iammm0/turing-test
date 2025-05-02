@@ -1,28 +1,29 @@
 "use client";
 
+import React, { useState } from "react";
 import {
   Dialog,
-  DialogActions,
-  DialogContent,
   DialogTitle,
+  DialogContent,
+  DialogActions,
   TextField,
   Button,
   Typography,
   IconButton,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
-import React, { useState } from "react";
-import {login, register} from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
+
+interface AuthDialogProps {
+  open: boolean;
+  onCloseAction: () => void;
+}
 
 export default function AuthDialog({
   open,
   onCloseAction,
-  onSuccessAction,
-}: {
-  open: boolean;
-  onCloseAction: () => void;
-  onSuccessAction: (token: string) => void;
-}) {
+}: AuthDialogProps) {
+  const { user, loading, error, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,25 +31,16 @@ export default function AuthDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     try {
-      let token;
-
       if (mode === "login") {
-        token = await login(email, password);  // 调用 login 函数
+        await login(email, password);
       } else {
-        token = await register(email, password, displayName);  // 调用 register 函数
-        if (!token) {
-          alert("注册成功，请手动登录");
-          setMode("login");
-          return;
-        }
+        await register(email, password);
       }
-
-      onSuccessAction(token);  // 调用成功回调
-      onCloseAction();  // 关闭对话框
+      // 登陆/注册成功后关闭弹窗
+      onCloseAction();
     } catch {
-      alert("操作失败");
+      // error 已由 useAuth 维护，可选地在这里额外处理
     }
   };
 
@@ -69,44 +61,68 @@ export default function AuthDialog({
           <CloseIcon />
         </IconButton>
       </DialogTitle>
+
       <DialogContent>
         {mode === "register" && (
           <TextField
             label="昵称"
             fullWidth
             margin="normal"
-            color="warning"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
+            disabled={loading}
           />
         )}
+
         <TextField
           label="邮箱"
+          type="email"
           fullWidth
           margin="normal"
-          color="warning"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          disabled={loading}
         />
+
         <TextField
           label="密码"
           type="password"
           fullWidth
           margin="normal"
-          color="warning"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          disabled={loading}
         />
+
+        {error && (
+          <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+            {error}
+          </Typography>
+        )}
+
         <Typography
           variant="body2"
           sx={{ mt: 1, cursor: "pointer", textDecoration: "underline" }}
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
+          onClick={() => {
+            setMode((m) => (m === "login" ? "register" : "login"));
+          }}
         >
           {mode === "login" ? "没有账号？注册一个" : "已有账号？去登录"}
         </Typography>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={handleSubmit} variant="contained" color="warning">
+
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          color="warning"
+          disabled={
+            loading ||
+            !email ||
+            !password ||
+            (mode === "register" && !displayName)
+          }
+        >
           {mode === "login" ? "登录" : "注册"}
         </Button>
       </DialogActions>

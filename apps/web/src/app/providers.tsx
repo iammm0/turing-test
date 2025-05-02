@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CacheProvider } from "@emotion/react";
-import { emotionCache } from "@/lib/emotion-cache";
+import { emotionCache } from "@/util/emotion-cache";
 import React from "react";
 
 const queryClient = new QueryClient();

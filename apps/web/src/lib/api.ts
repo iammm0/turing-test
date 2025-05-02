@@ -1,31 +1,39 @@
-import axios from "axios";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
 
-// 创建 Axios 实例
-export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api",
-  withCredentials: true, // 如果你的 FastAPI 支持 Cookie
-});
+async function httpRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = typeof window !== "undefined"
+    ? localStorage.getItem("access_token")
+    : null;
 
-// 设置请求拦截器
-api.interceptors.request.use(config => {
-  const token = localStorage.getItem("access_token");
-  if (token) {
-    console.log("🛡️ 拦截器附加 token:", token);
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  } else {
-    console.log("🛡️ 拦截器未找到 token");
+  const headers: Record<string,string> = {
+    "Content-Type": "application/json",
+    ...(init.headers as object),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
   }
-  return config;
-});
+  return (await res.json()) as T;
+}
 
+export interface AuthResponse { access_token: string }
 
-// 设置响应拦截器（如果需要）
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 在这里可以处理响应错误，比如 token 过期时的处理
-    return Promise.reject(error);
-  }
-);
+export function apiRegister(email: string, password: string) {
+  return httpRequest<AuthResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
 
+export function apiLogin(email: string, password: string) {
+  return httpRequest<AuthResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}

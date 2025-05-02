@@ -140,10 +140,23 @@ async def matchmaker_loop():
         if len(QUEUE) < 2:
             continue
 
+        # 1) 从队列取出两个 WS
         ws1 = QUEUE.pop(0)
         ws2 = QUEUE.pop(0)
-        uid1 = next(u for u, w in PLAYERS.items() if w is ws1)
-        uid2 = next(u for u, w in PLAYERS.items() if w is ws2)
+
+        # 2) 反查各自的 user_id（字符串）
+        uid1 = next((u for u, w in PLAYERS.items() if w is ws1), None)
+        uid2 = next((u for u, w in PLAYERS.items() if w is ws2), None)
+
+        # 如果任一端已经掉线／被移除，就把活着的那端放回队列，然后跳过
+        if not uid1 or not uid2:
+            # ws1 还活着，就补回队列
+            if uid1 and ws1 not in QUEUE:
+                QUEUE.insert(0, ws1)
+            # ws2 还活着，就补回队列
+            if uid2 and ws2 not in QUEUE:
+                QUEUE.insert(0, ws2)
+            continue
 
         # 随机分配角色
         if random.random() < 0.5:

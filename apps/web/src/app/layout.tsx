@@ -8,10 +8,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh">
+      <html lang="zh">
+      <head>
+          <title>图灵测试游戏</title>
+      </head>
       <body>
-        <Providers>{children}</Providers>
+      <Providers>{children}</Providers>
       </body>
-    </html>
+      </html>
   );
 }
