@@ -3,7 +3,6 @@ import datetime as dt
 import json
 import random
 import uuid
-from pathlib import Path
 from typing import Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
@@ -12,11 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.core.database import get_db
 from apps.api.core.redis import rdb, publish_chat
-from apps.api.dao.game import Game
+from apps.api.dao.game import Game, GameStatus
 from apps.api.dao.guess import Guess  # ← 用于存储审讯者的猜测
 from apps.api.dao.message import Message
 from apps.api.dao.sender import SenderRole
-from apps.api.service.llm_service import DeepSeekClient, Grok3Client
+from apps.api.service.llm_service import Grok3Client
 from apps.api.service.prompt_builders.prompt_builder import make_prompt_builder
 from apps.api.utils.process_reply import post_process_reply
 
@@ -219,7 +218,8 @@ async def chat_socket(
                     ai_id = uuid.UUID(packet["suspect_ai_id"])
                     hu_id = uuid.UUID(packet["suspect_human_id"])
                     iq_id = uuid.UUID(packet["interrogator_id"])
-                except Exception:
+                except (ValueError, TypeError):
+                    # 只捕获格式或类型错误
                     await ws.send_text(json.dumps({"error": "invalid UUID in guess"}))
                     continue
 
@@ -234,6 +234,7 @@ async def chat_socket(
                     guessed_human_id=hu_id,
                     is_correct=correct,
                 ))
+                game.status = GameStatus.ENDED
                 await db.commit()
 
                 # 返回猜测结果

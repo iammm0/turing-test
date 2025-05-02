@@ -20,7 +20,7 @@
 html,
 body {
   height: 100%;
-  font-family: var(--font-family);
+  font-family: var(--font-family), serif;
   font-size: var(--font-size);
   background-color: var(--background-color);
   color: var(--text-color);

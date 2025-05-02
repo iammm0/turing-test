@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import uuid
 from typing import Dict, List
@@ -7,6 +8,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from apps.api.core.config import settings
+from apps.api.core.redis import rdb
+from apps.api.dao.game import Game, GameStatus, MatchStatus
 from apps.api.service.game_service import GameService
 from apps.api.utils.auth import decode_token
 
@@ -113,6 +116,8 @@ async def ws_match(websocket: WebSocket):
                 # 接受
                 info["accepted"].add(uid_str)
                 if info["accepted"] == set(info["users"]):
+                    # 标记匹配已确认
+                    info["match_status"] = MatchStatus.CONFIRMED
                     # 双方都同意，取消定时，创建对局
                     info["timer"].cancel()
                     await _finalize_match(match_id, info)
@@ -154,6 +159,7 @@ async def matchmaker_loop():
             "users": [uid1, uid2],
             "roles": roles,
             "accepted": set(),
+            "match_status": MatchStatus.WAITING,  # ← 新增
             "timer": timer,
         }
 
@@ -196,8 +202,6 @@ async def _finalize_match(match_id: str, info: dict):
     for uid in info["users"]:
         ACTIVE_USERS.add(uid)
 
-    roles = info["roles"]
-
     # 2) 准备参数
     roles = info["roles"]
     inviter_id_str = next(u for u, r in roles.items() if r == "I")
@@ -217,6 +221,9 @@ async def _finalize_match(match_id: str, info: dict):
             human_witness_id=human_id,
             ai_witness_id=ai_witness_id,
         )
+
+    # 派发一个 5 分钟后结束聊天的后台任务
+    asyncio.create_task(_schedule_chat_end(str(game.id)))
 
     # 通知并断开
     for uid in info["users"]:
@@ -243,3 +250,28 @@ async def _finalize_match(match_id: str, info: dict):
 
     # 清理掉 pending 条目
     PENDING.pop(match_id, None)
+
+
+async def _schedule_chat_end(game_id: str):
+    # 等 5 分钟
+    await asyncio.sleep(5 * 60)
+
+    # 1) 更新数据库状态
+    async with AsyncSessionLocal() as db:
+        game = await db.get(Game, uuid.UUID(game_id))
+        if not game:
+            return
+        game.status = GameStatus.JUDGING  # 标记“聊天已结束，等待猜测”
+        await db.commit()
+
+    # 2) 向所有三方推送“聊天结束”
+    #    约定好的频道名，比如：
+    channels = [
+        f"room:{game_id}:A_I",
+        f"room:{game_id}:I_A",
+        f"room:{game_id}:H_I",
+        f"room:{game_id}:I_H",
+    ]
+    msg = json.dumps({"action": "chat_ended", "detail": "聊天已结束，请审讯者做出最终猜测"})
+    for ch in channels:
+        await rdb.publish(ch, msg)

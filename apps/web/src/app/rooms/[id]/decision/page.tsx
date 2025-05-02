@@ -9,23 +9,16 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { useParams, useRouter } from "next/navigation";
-import { useGuessAI } from "@/hooks/useGame";
 import { useState } from "react";
 
 export default function JudgeDecisionPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const guessAI = useGuessAI();
   const [loading, setLoading] = useState(false);
 
   const handleGuess = async (suspectIsA: boolean) => {
     setLoading(true);
     try {
-      const res = await guessAI.mutateAsync({
-        gameId: id,
-        suspect_ai: suspectIsA,
-      });
-
       const { success, eloDiff } = res.data; // 由后端返回
       router.push(`/rooms/${id}/result?success=${success}&eloDiff=${eloDiff}`);
     } catch (e) {

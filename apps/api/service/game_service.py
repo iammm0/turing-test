@@ -26,7 +26,7 @@ class GameService:
             interrogator_id=interrogator_id,
             witness_human_id=human_witness_id,
             witness_ai_id=ai_witness_id,
-            status=GameStatus.ACTIVE,
+            status=GameStatus.CHATTING,
         )
 
         self.db.add(game)

@@ -10,12 +10,16 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from apps.api.dao.base import Base
 
 
+# ────────────── “匹配阶段” ──────────────
+class MatchStatus(str, enum.Enum):
+    WAITING   = "WAITING"    # 玩家已进入匹配队列，等待配对或对方确认
+    CONFIRMED = "CONFIRMED"  # 双方都按了“accept”，即将进入对局
+
+# ────────────── “游戏阶段” ──────────────
 class GameStatus(str, enum.Enum):
-    ACTIVE  = "ACTIVE"
-    WAITING = "WAITING"
-    CHAT    = "CHAT"
-    JUDGED  = "JUDGED"
-    ENDED   = "ENDED"
+    CHATTING = "CHATTING"  # 聊天阶段（5 分钟倒计时中）
+    JUDGING  = "JUDGING"   # 聊天结束，等待审讯者提交猜测
+    ENDED    = "ENDED"     # 对局结束（猜测已出，已打分／记录）
 
 
 class Side(str, enum.Enum):
@@ -53,7 +57,7 @@ class Game(Base):
     # —— 状态字段 ——
     status:    Mapped[GameStatus] = mapped_column(
         Enum(GameStatus, name="gamestatus_enum"),
-        default=GameStatus.WAITING,
+        default=GameStatus.CHATTING,
         nullable=False,
     )
     started_at: Mapped[dt.datetime] = mapped_column(
