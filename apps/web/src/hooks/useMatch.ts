@@ -1,29 +1,38 @@
-// hooks/useMatch.ts
 import { useCallback, useState } from "react";
-import { useWebSocket } from "@/lib/socket";
+import { useWebSocket, ReadyState } from "@/lib/socket";
 import { SenderRole } from "@/lib/types";
 
-export function useMatch(onMatched: (gameId: string) => void) {
-  const token = localStorage.getItem("access_token");
-  const url   = `ws://localhost:8000/api/ws/match?token=${token}`;
+// ❗ 这个 Hook 不再暴露回调，而是通过状态 matchedGameId 告知外部匹配成功
+export function useMatch(shouldConnect: boolean = true) {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
+  // ✅ 只有 token 存在时，才构造 WebSocket URL，否则保持为空字符串
+  const url = shouldConnect && token
+    ? `ws://localhost:8000/api/ws/match?token=${token}`
+    : "";
+
+  // 各种状态管理
   const [matchId, setMatchId] = useState<string | null>(null);
-  const [role,    setRole   ] = useState<SenderRole | null>(null);
-  const [status,  setStatus ] = useState<"idle"|"waiting"|"found">("idle");
+  const [role, setRole] = useState<SenderRole | null>(null);
+  const [status, setStatus] = useState<"idle" | "waiting" | "found">("idle");
   const [windowT, setWindowT] = useState<number>(0);
+  const [matchedGameId, setMatchedGameId] = useState<string | null>(null); // ✅ 新增用于触发跳转
 
   const { sendJson, readyState } = useWebSocket(
     url,
     evt => {
       switch (evt.action) {
         case "match_found":
+          // 成功匹配时设置角色、match_id、确认倒计时
           setMatchId(evt.match_id);
           setRole(evt.role);
           setWindowT(evt.window);
           setStatus("found");
           break;
         case "matched":
-          onMatched(evt.game_id);
+          // ❗ 不在此处跳转，仅设置状态
+          setMatchedGameId(evt.game_id);
           break;
         case "timeout":
         case "error":
@@ -31,25 +40,40 @@ export function useMatch(onMatched: (gameId: string) => void) {
           break;
       }
     },
-    () => { setStatus("waiting"); },   // onOpen
-    () => { setStatus("idle"); }       // onClose
+    () => {
+      setStatus("waiting");
+      sendJson({ action: "join" });
+    },
+    () => {
+      setStatus("idle");
+    },
+    shouldConnect
   );
 
+  // 各种命令行为封装
   const joinQueue = useCallback(() => {
-    sendJson({ action: "join" });
-  }, [sendJson]);
+    if (readyState === ReadyState.OPEN) {
+      sendJson({ action: "join" });
+    }
+  }, [sendJson, readyState]);
 
   const leaveQueue = useCallback(() => {
-    sendJson({ action: "leave" });
-  }, [sendJson]);
+    if (readyState === ReadyState.OPEN) {
+      sendJson({ action: "leave" });
+    }
+  }, [sendJson, readyState]);
 
   const acceptMatch = useCallback(() => {
-    if (matchId) sendJson({ action: "accept", match_id: matchId });
-  }, [sendJson, matchId]);
+    if (readyState === ReadyState.OPEN && matchId) {
+      sendJson({ action: "accept", match_id: matchId });
+    }
+  }, [sendJson, matchId, readyState]);
 
   const declineMatch = useCallback(() => {
-    if (matchId) sendJson({ action: "decline", match_id: matchId });
-  }, [sendJson, matchId]);
+    if (readyState === ReadyState.OPEN && matchId) {
+      sendJson({ action: "decline", match_id: matchId });
+    }
+  }, [sendJson, matchId, readyState]);
 
   return {
     status,
@@ -57,6 +81,7 @@ export function useMatch(onMatched: (gameId: string) => void) {
     matchId,
     role,
     windowT,
+    matchedGameId, // ✅ 关键值：页面中监听这个来跳转
     joinQueue,
     leaveQueue,
     acceptMatch,

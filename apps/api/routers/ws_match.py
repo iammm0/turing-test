@@ -267,7 +267,7 @@ async def _finalize_match(match_id: str, info: dict):
 
 async def _schedule_chat_end(game_id: str):
     # 等 5 分钟
-    await asyncio.sleep(5 * 60)
+    await asyncio.sleep(5 * 60 * 12)
 
     # 1) 更新数据库状态
     async with AsyncSessionLocal() as db:

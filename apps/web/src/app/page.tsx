@@ -27,8 +27,11 @@ export default function HomePage() {
   const handleAuthSuccess = (token: string) => {
     localStorage.setItem("access_token", token);
     setOpenDialog(false);
-    router.push("/queue");
+
+    // ✅ 强制刷新 queue 页，确保组件获取到最新 token
+    router.push("/queue?" + Date.now()); // <-- 关键改动：强制不使用缓存
   };
+
 
   return (
     <Container maxWidth="sm" className={styles.centered}>
