@@ -2,15 +2,17 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Msg, Sender } from "@/types";
+import {ChatMessage, GuessMessage, MessagePacket} from "@/lib/types";
 
 type Status = "connecting" | "open" | "closed" | "error";
 
 export function useChatSocket(gameId: string, role: Sender) {
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<MessagePacket[]>([]);
   const [status, setStatus] = useState<Status>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
 
-  const url = `ws://localhost:8000/ws/rooms/${gameId}/${role}`; // ✅ 替换为部署地址
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : "";
+  const url = `ws://localhost:8000/ws/rooms/${gameId}/${role}?token=${token}`;
 
   useEffect(() => {
     let ws: WebSocket;
@@ -30,10 +32,8 @@ export function useChatSocket(gameId: string, role: Sender) {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          if (data?.body && data?.sender && data?.recipient) {
-            setMessages((prev) => [...prev, data as Msg]);
-          }
+          const data: MessagePacket = JSON.parse(event.data);
+          setMessages((prev) => [...prev, data]);
         } catch (err) {
           console.warn("非标准消息格式：", event.data);
         }
@@ -47,11 +47,12 @@ export function useChatSocket(gameId: string, role: Sender) {
     };
   }, [url]);
 
-  const sendMessage = useCallback((msg: Omit<Msg, "ts">) => {
-    const fullMsg: Msg = {
-      ...msg,
-      ts: new Date().toISOString(),
-    };
+  const sendMessage = useCallback((msg: Omit<ChatMessage, "ts"> | GuessMessage) => {
+    const fullMsg = {
+    ...msg,
+    ts: new Date().toISOString(),
+  } as MessagePacket;
+
     wsRef.current?.send(JSON.stringify(fullMsg));
     setMessages((prev) => [...prev, fullMsg]);
   }, []);

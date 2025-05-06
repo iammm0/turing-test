@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import AuthDialog from "@/components/ui/AuthDialog";
 import styles from "@/styles/layout.module.css";
 
+// ✅ 导入调试组件
+import WsDebug from "@/components/ui/WsDebug"
+import WsRawDebug from "@/components/ui/WsRawDebug";
+
 export default function HomePage() {
   const [openDialog, setOpenDialog] = useState(false); // 控制对话框的状态
   const router = useRouter();
@@ -52,6 +56,8 @@ export default function HomePage() {
 
       {/* 登录/注册对话框 */}
       <AuthDialog open={openDialog} onCloseAction={() => setOpenDialog(false)}/>
+      {/* ✅ WebSocket 调试面板 */}
+      <WsRawDebug />
     </Container>
   );
 }

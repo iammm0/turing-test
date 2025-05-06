@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 export enum ReadyState {
   CONNECTING,
@@ -12,24 +12,32 @@ export function useWebSocket(
   onMessage: (data: any) => void,
   onOpen?: () => void,
   onClose?: () => void,
-  shouldConnect: boolean = true,  // <-- ✅ 添加
+  shouldConnect: boolean = true
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const [readyState, setReadyState] = useState<ReadyState>(ReadyState.CLOSED);
+  const isClosedManuallyRef = useRef(false); // ✅ 避免闭包问题
 
   useEffect(() => {
-    if (!shouldConnect || !url) return; // <-- ✅ 不连接条件
+    if (!shouldConnect || !url) {
+      console.warn("🛑 WebSocket 未启用或 URL 为空");
+      return;
+    }
 
+    isClosedManuallyRef.current = false;
     const ws = new WebSocket(url);
     wsRef.current = ws;
-    setReadyState(ws.readyState);
+
+    console.log("📡 初始化 WebSocket:", url);
 
     ws.onopen = () => {
-      setReadyState(ws.readyState);
+      if (isClosedManuallyRef.current) return;
+      console.log("✅ WebSocket 连接成功");
+      setReadyState(WebSocket.OPEN);
       onOpen?.();
     };
 
-    ws.onmessage = e => {
+    ws.onmessage = (e) => {
       try {
         onMessage(JSON.parse(e.data));
       } catch {
@@ -37,25 +45,31 @@ export function useWebSocket(
       }
     };
 
+    ws.onerror = (e) => {
+      console.error("❌ WebSocket 错误:", e);
+    };
+
     ws.onclose = () => {
-      setReadyState(ws.readyState);
+      if (isClosedManuallyRef.current) return;
+      console.warn("🔌 WebSocket 已关闭");
+      setReadyState(WebSocket.CLOSED);
       onClose?.();
     };
 
-    ws.onerror = () => {
-      console.error("WebSocket error:");
-    };
-
     return () => {
+      isClosedManuallyRef.current = true;
+      console.log("🧹 清理 WebSocket 连接");
       ws.close();
     };
-  }, [url, onMessage, onOpen, onClose, shouldConnect]);
+  }, [url, shouldConnect]);
 
+  // ✅ 稳定 sendJson（不依赖外部函数）
   const sendJson = useCallback((msg: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
+    const socket = wsRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(msg));
     } else {
-      console.warn("WebSocket not open, cannot send", msg);  // <-- ✅ 安全日志
+      console.warn("⚠️ WebSocket 未连接，无法发送消息:", msg);
     }
   }, []);
 

@@ -1,17 +1,17 @@
 import asyncio
+import base64
 import json
 import random
 import uuid
 from typing import Dict, List
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from apps.api.core.config import settings
 from apps.api.core.redis import rdb
 from apps.api.dao.game import Game, GameStatus, MatchStatus
 from apps.api.service.game_service import GameService
-from apps.api.utils.auth import decode_token
 
 router = APIRouter()
 
@@ -47,13 +47,19 @@ async def ws_match(websocket: WebSocket):
     # 2️⃣ 从 query 参数读取并验证 token
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.send_json({"action": "error", "detail": "Token 已过期，请重新登录"})
+        await websocket.send_json({"action": "error", "detail": "缺少 token 参数"})
         return await websocket.close()
+
     try:
-        payload = decode_token(token)
+        # 只解析 payload 部分（第二段），不验证签名
+        payload_part = token.split(".")[1]
+        # 补足 Base64 padding
+        padded = payload_part + '=' * (-len(payload_part) % 4)
+        decoded = base64.urlsafe_b64decode(padded)
+        payload = json.loads(decoded)
         user_id = uuid.UUID(payload["sub"])
-    except HTTPException:
-        await websocket.send_json({"action": "error", "detail": "Token 已过期或无效，请重新登录"})
+    except Exception as e:
+        await websocket.send_json({"action": "error", "detail": f"Token 解码失败: {str(e)}"})
         return await websocket.close()
 
     # 3️⃣ 如果用户正在游戏中，拒绝排队并断开

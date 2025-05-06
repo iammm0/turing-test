@@ -14,11 +14,12 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { useState, useEffect } from "react";
+import { decodeJwt } from "@/lib/auth";
+import {GuessMessage, GuessResultMessage} from "@/lib/types";
 
 export default function RoomPage() {
   const router = useRouter();
   const params = usePathname().split("/");
-  // URL 模式 /rooms/{game_id}/{role}
   const gameId = params[2];
   const role = params[3] as Sender;
 
@@ -29,21 +30,18 @@ export default function RoomPage() {
   const [guessHuId, setGuessHuId] = useState("");
   const [canGuess, setCanGuess] = useState(false);
 
-  // 1) 监听 chat_ended 打开猜测表单
-  // 当后端在五分钟后发来 chat_ended，你可以在这里把 canGuess 打开
+  // 💬 监听聊天结束（chat_ended）
   useEffect(() => {
-    // 监听 messages 里是否有 action === "chat_ended"
-    if (messages.some((m) => (m as any).action === "chat_ended")) {
+    if (messages.some((m) => m.action === "chat_ended")) {
       setCanGuess(true);
     }
   }, [messages]);
 
-  // 2) 监听 guess_result，一旦出现就跳回首页
+  // ✅ 监听猜测结果（guess_result）
   useEffect(() => {
-    const result = (messages as any[]).find(m => m.action === "guess_result");
+    const result = messages.find((m): m is GuessResultMessage => m.action === "guess_result");
     if (result) {
-      // 可以提示一下结果，比如弹窗或者 toast
-      // 然后跳转
+      // 可加 Toast 提示：result.is_correct
       router.push("/");
     }
   }, [messages, router]);
@@ -51,24 +49,37 @@ export default function RoomPage() {
   const handleSend = () => {
     if (!input.trim()) return;
     sendMessage({
+      action: "message",
       sender: role,
-      // 对应接收对象的角色硬编码一下
-      recipient: role === "I" ? (/* 证人 */ "H") : "I",
+      recipient: role === "I" ? "H" : "I",
       body: input.trim(),
     });
     setInput("");
   };
 
-  const handleGuess = async () => {
-    // 审讯者提交最终猜测
-    sendMessage({
+  const handleGuess = () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      console.warn("⚠️ Token 不存在");
+      return;
+    }
+    const decoded = decodeJwt(token);
+    const userId = decoded?.sub;
+    if (!userId) {
+      console.warn("⚠️ 无效 Token");
+      return;
+    }
+
+    const guessPacket: GuessMessage = {
       action: "guess",
       sender: "I",
       recipient: "server",
       suspect_ai_id: guessAiId,
       suspect_human_id: guessHuId,
-      interrogator_id: /* 从 localStorage 或 token 解出的 userId */ "",
-    } as any);
+      interrogator_id: userId,
+    };
+
+    sendMessage(guessPacket);
   };
 
   return (
@@ -77,19 +88,20 @@ export default function RoomPage() {
       <Typography>Status: {status}</Typography>
 
       <List sx={{ height: "60vh", overflowY: "auto", mb: 2 }}>
-        {messages.map((m, i) => (
-          <ListItem key={i}>
-            <ListItemText
-              primary={`${m.sender} → ${m.recipient}: ${m.body}`}
-              secondary={new Date(m.ts).toLocaleTimeString()}
-            />
-          </ListItem>
-        ))}
+        {messages.map((m, i) =>
+          "body" in m ? (
+            <ListItem key={i}>
+              <ListItemText
+                primary={`${m.sender} → ${m.recipient}: ${m.body}`}
+                secondary={new Date(m.ts).toLocaleTimeString()}
+              />
+            </ListItem>
+          ) : null
+        )}
       </List>
 
       {status === "connecting" && <CircularProgress />}
 
-      {/* 聊天输入，仅在聊天阶段可用 */}
       {!canGuess && status === "open" && (
         <Box display="flex" gap={1}>
           <TextField
@@ -97,9 +109,7 @@ export default function RoomPage() {
             placeholder="输入消息…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSend();
-            }}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
           />
           <Button variant="contained" onClick={handleSend}>
             发送
@@ -107,7 +117,6 @@ export default function RoomPage() {
         </Box>
       )}
 
-      {/* 猜测表单，只给审讯者 && canGuess */}
       {role === "I" && canGuess && (
         <Box mt={2} display="flex" flexDirection="column" gap={1}>
           <Typography>聊天结束，请选择 AI / 人类：</Typography>

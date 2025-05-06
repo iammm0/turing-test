@@ -5,7 +5,7 @@ import random
 import uuid
 from typing import Dict
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ from apps.api.dao.message import Message
 from apps.api.dao.sender import SenderRole
 from apps.api.service.llm_service import Grok3Client
 from apps.api.service.prompt_builders.prompt_builder import make_prompt_builder
+from apps.api.utils.auth import decode_token
 from apps.api.utils.process_reply import post_process_reply
 
 # 握手 & 校验：await ws.accept() + 验证 Game 存在。
@@ -82,6 +83,18 @@ async def chat_socket(
     # ── 1. 握手并接受 WebSocket 连接 ──
     await ws.accept()
     prev_len = 0  # 前一条消息长度，初始为 0
+
+    token = ws.query_params.get("token")
+    if not token:
+        await ws.send_json({"error": "token missing"})
+        return await ws.close(code=4401)
+
+    try:
+        payload = decode_token(token)
+        user_id = uuid.UUID(payload["sub"])
+    except HTTPException:
+        await ws.send_json({"error": "invalid token"})
+        return await ws.close(code=4402)
 
     # ── 2. 校验对局存在 ──
     game = await db.get(Game, game_id)
