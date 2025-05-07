@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import {useRouter, usePathname, useParams} from "next/navigation";
 import { useChatSocket } from "@/hooks/useChatSocket";
 import { Sender } from "@/types";
 import {
@@ -19,9 +19,9 @@ import {GuessMessage, GuessResultMessage} from "@/lib/types";
 
 export default function RoomPage() {
   const router = useRouter();
-  const params = usePathname().split("/");
-  const gameId = params[2];
-  const role = params[3] as Sender;
+  const params = useParams<{ game_id: string; role: string }>();
+  const gameId = params.game_id;
+  const role = params.role as Sender;
 
   const { messages, sendMessage, status } = useChatSocket(gameId, role);
 
@@ -77,6 +77,7 @@ export default function RoomPage() {
       suspect_ai_id: guessAiId,
       suspect_human_id: guessHuId,
       interrogator_id: userId,
+      ts: new Date().toISOString(), // ✅ 添加时间戳
     };
 
     sendMessage(guessPacket);

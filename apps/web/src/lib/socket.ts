@@ -74,7 +74,7 @@ export function useWebSocket<TSend extends object = never, TRecv extends object 
       setReadyState(ReadyState.CLOSING); // ✅ 准确标记关闭中
       ws.close();
     };
-  }, [url, shouldConnect, onMessage, onOpen, onClose]);
+  }, [url, shouldConnect]);
 
   // ✅ 稳定 sendJson（不依赖外部函数）
   const sendJson = useCallback((msg: TSend) => {

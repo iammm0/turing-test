@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Msg, Sender } from "@/types";
+import { Sender } from "@/types";
 import {ChatMessage, GuessMessage, MessagePacket} from "@/lib/types";
 
 type Status = "connecting" | "open" | "closed" | "error";

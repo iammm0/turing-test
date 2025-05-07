@@ -1,16 +1,17 @@
-import { ReactNode } from "react";
+import {ReactNode} from "react";
 
-export default function RoomLayout({
+export default async function RoomLayout({
   children,
   params,
 }: {
   children: ReactNode;
-  params: { game_id: string; role: string };
+  params: Promise<{ game_id: string; role: string }>;
 }) {
+  const { role } = await params;
   return (
-    <div className={`room room-${params.role}`}>
-      {/* 这里可以放置房间通用 UI，比如计时器、顶部信息 */}
+    <div className={`room room-${role}`}>
       {children}
     </div>
   );
 }
+
