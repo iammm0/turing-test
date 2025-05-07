@@ -23,7 +23,7 @@ export default function AuthDialog({
   open,
   onCloseAction,
 }: AuthDialogProps) {
-  const { user, loading, error, login, register } = useAuth();
+  const { loading, error, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

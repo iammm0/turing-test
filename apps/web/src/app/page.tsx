@@ -7,7 +7,6 @@ import AuthDialog from "@/components/ui/AuthDialog";
 import styles from "@/styles/layout.module.css";
 
 // ✅ 导入调试组件
-import WsDebug from "@/components/ui/WsDebug"
 import WsRawDebug from "@/components/ui/WsRawDebug";
 
 export default function HomePage() {

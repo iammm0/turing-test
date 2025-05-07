@@ -1,14 +1,24 @@
 import { useCallback, useState } from "react";
 import { useWebSocket, ReadyState } from "@/lib/socket";
-import { SenderRole } from "@/lib/types";
+import {
+  AcceptMessage, DeclineMessage,
+  JoinMessage,
+  LeaveMessage,
+  MatchCommandMessage,
+  MatchEventMessage,
+  SenderRole
+} from "@/lib/types";
+
 
 /**
- * 匹配逻辑 Hook：处理匹配队列、确认流程、最终跳转准备
+ * 用于匹配阶段的 Hook
+ * 负责发送 join/leave/accept/decline 指令，并响应匹配事件
  */
 export function useMatch(shouldConnect: boolean = true) {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
+  // 只有在允许连接且有 token 时才构建 WebSocket 地址
   const url = shouldConnect && token
     ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:8000/api/ws/match?token=${token}`
     : "";
@@ -19,18 +29,21 @@ export function useMatch(shouldConnect: boolean = true) {
   const [windowT, setWindowT] = useState<number>(0);
   const [matchedGameId, setMatchedGameId] = useState<string | null>(null);
 
-  const { sendJson, readyState } = useWebSocket(
+  const { sendJson, readyState } = useWebSocket<
+      MatchCommandMessage,
+      MatchEventMessage
+  >(
     url,
-    evt => {
-      switch (evt.action) {
+      event => {
+      switch (event.action) {
         case "match_found":
-          setMatchId(evt.match_id);
-          setRole(evt.role);
-          setWindowT(evt.window);
+          setMatchId(event.match_id);
+          setRole(event.role);
+          setWindowT(event.window);
           setStatus("found");
           break;
         case "matched":
-          setMatchedGameId(evt.game_id); // ✅ 外部 useEffect 监听
+          setMatchedGameId(event.game_id); // ✅ 外部 useEffect 监听
           break;
         case "timeout":
         case "error":
@@ -41,7 +54,11 @@ export function useMatch(shouldConnect: boolean = true) {
     () => {
       setStatus("waiting");
       console.log("🛰️ 尝试发送 join 指令");
-      sendJson({ action: "join" });
+      const msg: JoinMessage = {
+        action: "join" ,
+        ts: new Date().toISOString(),
+      };
+      sendJson(msg);
     },
     () => {
       setStatus("idle");
@@ -51,25 +68,44 @@ export function useMatch(shouldConnect: boolean = true) {
 
   const joinQueue = useCallback(() => {
     if (readyState === ReadyState.OPEN) {
-      sendJson({ action: "join" });
+      const msg: JoinMessage = {
+        action: "join" ,
+        ts: new Date().toISOString(),
+      };
+      sendJson(msg);
     }
-  }, [sendJson, readyState]);
+  }, [readyState, sendJson]);
+
 
   const leaveQueue = useCallback(() => {
     if (readyState === ReadyState.OPEN) {
-      sendJson({ action: "leave" });
+      const msg: LeaveMessage = {
+        action: "leave" ,
+        ts: new Date().toISOString(),
+      };
+      sendJson(msg);
     }
   }, [sendJson, readyState]);
 
   const acceptMatch = useCallback(() => {
     if (readyState === ReadyState.OPEN && matchId) {
-      sendJson({ action: "accept", match_id: matchId });
+      const msg: AcceptMessage = {
+        action: "accept",
+        match_id: matchId ,
+        ts: new Date().toISOString(),
+      };
+      sendJson(msg);
     }
   }, [sendJson, readyState, matchId]);
 
   const declineMatch = useCallback(() => {
     if (readyState === ReadyState.OPEN && matchId) {
-      sendJson({ action: "decline", match_id: matchId });
+      const msg: DeclineMessage = {
+        action: "decline",
+        match_id: matchId ,
+        ts: new Date().toISOString(),
+      };
+      sendJson(msg);
     }
   }, [sendJson, readyState, matchId]);
 

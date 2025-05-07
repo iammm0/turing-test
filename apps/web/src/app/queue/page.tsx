@@ -57,7 +57,7 @@ export default function QueuePage() {
 
   const [timer, setTimer] = useState<number>(0);
   useEffect(() => {
-    if (status === "found" && typeof windowT === "number") {
+    if (status === "found") {
       setTimer(windowT);
       const iv = setInterval(() => {
         setTimer((t) => (t > 0 ? t - 1 : 0));

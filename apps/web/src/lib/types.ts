@@ -6,20 +6,77 @@ export enum SenderRole {
   H = "H",
 }
 
+export type MessagePacket =
+  | ChatMessage
+  | GuessMessage
+  | GuessResultMessage
+  | SystemMessage;
+
+export type MatchCommandMessage =
+  | JoinMessage
+  | LeaveMessage
+  | AcceptMessage
+  | DeclineMessage;
+
+export type MatchEventMessage =
+  | MatchFoundMessage
+  | MatchedMessage
+  | TimeoutMessage
+  | ErrorMessage;
+
 export type BaseMessage = {
   ts: string; // 时间戳 ISO 字符串
 };
 
-// ① 聊天消息（双向交流）
+// 匹配指令
+export type JoinMessage = BaseMessage & {
+  action: "join";
+};
+
+export type LeaveMessage = BaseMessage & {
+  action: "leave";
+};
+
+export type AcceptMessage = BaseMessage & {
+  action: "accept";
+  match_id: string;
+};
+
+export type DeclineMessage = BaseMessage & {
+  action: "decline";
+  match_id: string;
+};
+
+// 匹配事件
+export type MatchFoundMessage = BaseMessage & {
+  action: "match_found";
+  match_id: string;
+  role: SenderRole;
+  window: number;
+};
+
+export type MatchedMessage = BaseMessage & {
+  action: "matched";
+  game_id: string;
+};
+
+export type TimeoutMessage = BaseMessage & {
+  action: "timeout";
+};
+
+export type ErrorMessage = BaseMessage & {
+  action: "error";
+  detail?: string;
+};
+
+// 游戏中消息
 export type ChatMessage = BaseMessage & {
   action: "message";
   sender: Sender;
   recipient: Recipient;
   body: string;
 };
-
-// ② 猜测消息（系统向后端发起）
-export type GuessMessage = {
+export type GuessMessage = BaseMessage & {
   action: "guess";
   sender: "I";
   recipient: "server";
@@ -27,20 +84,10 @@ export type GuessMessage = {
   suspect_human_id: string;
   interrogator_id: string;
 };
-
-// ③ 结果消息（后端返回）
-export type GuessResultMessage = {
+export type GuessResultMessage = BaseMessage & {
   action: "guess_result";
   is_correct: boolean;
 };
-
-// 💡 后续系统消息（如 chat_ended 等）也可加进去
-export type SystemMessage = {
+export type SystemMessage = BaseMessage & {
   action: "chat_ended";
 };
-
-export type MessagePacket =
-  | ChatMessage
-  | GuessMessage
-  | GuessResultMessage
-  | SystemMessage;
