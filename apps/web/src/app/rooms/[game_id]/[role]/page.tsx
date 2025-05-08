@@ -1,8 +1,7 @@
 "use client";
 
-import {useRouter, usePathname, useParams} from "next/navigation";
-import { useChatSocket } from "@/hooks/useChatSocket";
-import { Sender } from "@/types";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Box,
   List,
@@ -13,60 +12,54 @@ import {
   Typography,
   CircularProgress,
 } from "@mui/material";
-import { useState, useEffect } from "react";
+
+import { useGame } from "@/hooks/useGame";
 import { decodeJwt } from "@/lib/auth";
-import {GuessMessage, GuessResultMessage} from "@/lib/types";
+import { GuessMessage, SenderRole } from "@/lib/types";
 
 export default function RoomPage() {
   const router = useRouter();
-  const params = useParams<{ game_id: string; role: string }>();
-  const gameId = params.game_id;
-  const role = params.role as Sender;
-
-  const { messages, sendMessage, status } = useChatSocket(gameId, role);
+  const params = usePathname().split("/");
+  const gameId = params[2];
+  const role = params[3] as SenderRole;
 
   const [input, setInput] = useState("");
   const [guessAiId, setGuessAiId] = useState("");
   const [guessHuId, setGuessHuId] = useState("");
   const [canGuess, setCanGuess] = useState(false);
 
-  // 💬 监听聊天结束（chat_ended）
+  const onGuessResult = () => {
+    router.push("/");
+  };
+
+  const {
+    messages,
+    status,
+    sendMessage,
+    sendGuess,
+  } = useGame(gameId, role, onGuessResult);
+
+  // 💬 检查是否已结束聊天（出现 chat_ended 消息）
   useEffect(() => {
     if (messages.some((m) => m.action === "chat_ended")) {
       setCanGuess(true);
     }
   }, [messages]);
 
-  // ✅ 监听猜测结果（guess_result）
-  useEffect(() => {
-    const result = messages.find((m): m is GuessResultMessage => m.action === "guess_result");
-    if (result) {
-      // 可加 Toast 提示：result.is_correct
-      router.push("/");
-    }
-  }, [messages, router]);
-
   const handleSend = () => {
     if (!input.trim()) return;
-    sendMessage({
-      action: "message",
-      sender: role,
-      recipient: role === "I" ? "H" : "I",
-      body: input.trim(),
-    });
+    const recipient: SenderRole = role === "I" ? SenderRole.H : SenderRole.I;
+    sendMessage(recipient, input.trim());
     setInput("");
   };
 
   const handleGuess = () => {
     const token = localStorage.getItem("access_token");
-    if (!token) {
-      console.warn("⚠️ Token 不存在");
-      return;
-    }
-    const decoded = decodeJwt(token);
+    const decoded = token ? decodeJwt(token) : null;
     const userId = decoded?.sub;
+
     if (!userId) {
-      console.warn("⚠️ 无效 Token");
+      console.warn("⚠️ Token 无效或不存在");
       return;
     }
 
@@ -77,15 +70,17 @@ export default function RoomPage() {
       suspect_ai_id: guessAiId,
       suspect_human_id: guessHuId,
       interrogator_id: userId,
-      ts: new Date().toISOString(), // ✅ 添加时间戳
+      ts: new Date().toISOString(),
     };
 
-    sendMessage(guessPacket);
+    sendGuess(guessPacket.suspect_ai_id, guessPacket.suspect_human_id);
   };
 
   return (
     <Box px={2} py={1}>
-      <Typography variant="h6">房间号: {gameId} — 您是 {role}</Typography>
+      <Typography variant="h6">
+        房间号: {gameId} — 您是 {role}
+      </Typography>
       <Typography>Status: {status}</Typography>
 
       <List sx={{ height: "60vh", overflowY: "auto", mb: 2 }}>
@@ -120,7 +115,7 @@ export default function RoomPage() {
 
       {role === "I" && canGuess && (
         <Box mt={2} display="flex" flexDirection="column" gap={1}>
-          <Typography>聊天结束，请选择 AI / 人类：</Typography>
+          <Typography>聊天结束，请猜测 AI / 人类：</Typography>
           <TextField
             label="猜测 AI 的用户 ID"
             value={guessAiId}
