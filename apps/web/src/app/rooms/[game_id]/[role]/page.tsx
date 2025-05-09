@@ -1,6 +1,6 @@
 "use client";
 
-import {useRouter, usePathname, useParams} from "next/navigation";
+import {useRouter, useParams} from "next/navigation";
 import { useChatSocket } from "@/hooks/useChatSocket";
 import { Sender } from "@/types";
 import {
