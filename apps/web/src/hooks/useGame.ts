@@ -15,13 +15,16 @@ export function useGame(
   gameId: string,
   role: SenderRole,
   onGuessResult: (correct: boolean) => void,
-  autoReconnect: boolean = true
+  autoReconnect: boolean = true,
+  shouldConnect: boolean = true
 ) {
   const token = useMemo(
     () => (typeof window !== "undefined" ? localStorage.getItem("access_token") : ""),
     []
   );
-  const url = `ws://localhost:8000/api/ws/rooms/${gameId}/${role}?token=${token}`;
+  const url = shouldConnect && token
+    ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:8000/api/ws/match?token=${token}`
+    : "";
 
   const interrogatorId = useMemo(() => {
     try {
@@ -34,7 +37,7 @@ export function useGame(
   const [messages, setMessages] = useState<MessagePacket[]>([]);
   const [status, setStatus] = useState<Status>("connecting");
 
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { sendJson, readyState } = useWebSocket<MessagePacket, MessagePacket>(
     url,

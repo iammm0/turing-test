@@ -20,6 +20,7 @@ export function useAuth() {
       const { access_token } = await apiLogin(email, password);
       localStorage.setItem("access_token", access_token);
       setUser(email);
+      return access_token; // ✅ 显式返回 token
     } catch (e: any) {
       setError(e.message);
       throw e;
@@ -34,6 +35,7 @@ export function useAuth() {
       const { access_token } = await apiRegister(email, password);
       localStorage.setItem("access_token", access_token);
       setUser(email);
+      return access_token; // ✅ 显式返回 token
     } catch (e: any) {
       setError(e.message);
       throw e;
