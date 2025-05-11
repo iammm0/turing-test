@@ -46,11 +46,31 @@ export function useGame(
     url,
     shouldConnect,
     onMessage: (msg) => {
-      setMessages((prev) => [...prev, msg]);
-      if (msg.action === "guess_result") {
-        onGuessResult(msg.is_correct);
-      }
-    },
+  // 如果是聊天消息才去重
+  if (msg.action === "message") {
+    const { ts, sender, recipient, body } = msg;
+
+    setMessages((prev) => {
+      const isDuplicate = prev.some(
+        (m) =>
+          m.action === "message" &&
+          m.ts === ts &&
+          m.sender === sender &&
+          m.recipient === recipient &&
+          m.body === body
+      );
+      return isDuplicate ? prev : [...prev, msg];
+    });
+  } else {
+    // 其他系统类消息照常添加
+    setMessages((prev) => [...prev, msg]);
+
+    if (msg.action === "guess_result") {
+      onGuessResult(msg.is_correct);
+    }
+  }
+},
+
     onOpen: () => {
       setStatus("open");
     },

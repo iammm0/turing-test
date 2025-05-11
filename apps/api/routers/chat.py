@@ -51,6 +51,9 @@ _llm = Grok3Client(
     api_key="sk-ykFU3QyxG9LpZdLRe4acHdKvQFVBWmUQbeqDBolLq14CdhK0"
 )
 
+# —— 全局变量：标记已启动的 AI 后台任务 —— 🆕
+AI_STARTED: set[str] = set()
+
 @router.websocket(
     "/rooms/{game_id}/{role}",
     name="房间内实时聊天；按 sender_recipient 分双通道"
@@ -111,9 +114,13 @@ async def chat_socket(
     # ── 3. 按角色订阅对应 Redis 频道 ──
     # 审讯者 I 要接收来自 AI(A) 和 人类(H) 的消息
     if role == SenderRole.I:
-        # ✅ 启动 AI 聊天任务（非阻塞）
-        asyncio.create_task(start_ai_for_game(game_id, db))
+        # ✅ 启动 AI 聊天任务（非阻塞） + 去重防重复 🆕
+        if str(game_id) not in AI_STARTED:
+            AI_STARTED.add(str(game_id))  # 🆕 标记当前任务已启动
+            asyncio.create_task(start_ai_for_game(game_id, db))
+
         channels = [f"room:{game_id}:A_I", f"room:{game_id}:H_I"]
+
     # AI 只接收 I 发送的消息
     elif role == SenderRole.A:
         channels = [f"room:{game_id}:I_A"]
@@ -176,63 +183,6 @@ async def chat_socket(
                     ts=now,
                 ))
                 await db.commit()
-
-                # c) 如果是 I→A，触发 AI 回复
-                if packet["sender"] == SenderRole.I.value and packet["recipient"] == SenderRole.A.value:
-                    # 1) 拉取历史
-                    stmt = (
-                        select(Message)
-                        .where(
-                            Message.game_id == game_id,
-                            Message.sender.in_([SenderRole.I, SenderRole.A]),
-                            Message.recipient.in_([SenderRole.I, SenderRole.A]),
-                        )
-                        .order_by(Message.ts)
-                    )
-                    history_rows = (await db.execute(stmt)).scalars().all()
-
-                    # 2) 调用 llm 生成回复
-                    try:
-                        ai_reply = await _llm.chat_reply(history_rows, packet["body"])
-                    except Exception as e:
-                        await ws.send_json({"error": f"AI 回复失败: {str(e)}"})
-                        continue
-
-                    body_clean = post_process_reply(ai_reply)
-                    n_char = len(ai_reply)
-                    n_char_prev = prev_len
-
-                    delay = (
-                        1.0
-                        + random.normalvariate(0.3, 0.03) * n_char
-                        + random.normalvariate(0.03, 0.003) * n_char_prev
-                        + random.gammavariate(2.5, 0.25)
-                    )
-
-                    # 3) 构造 AI 消息
-                    ai_ts = dt.datetime.now(dt.UTC)
-                    ai_msg = {
-                        "sender": SenderRole.A.value,
-                        "recipient": SenderRole.I.value,
-                        "body": body_clean,
-                        "ts": ai_ts.isoformat(),
-                    }
-
-                    # 等待模拟用户打字、阅读和思考的时间
-                    await asyncio.sleep(delay)
-
-                    # 4) 发布 & 存库
-                    await publish_chat(game_id, ai_msg)
-                    db.add(Message(
-                        game_id=game_id,
-                        sender=SenderRole.A,
-                        recipient=SenderRole.I,
-                        body=ai_reply,
-                        ts=ai_ts,
-                    ))
-                    await db.commit()
-                    # 更新前一条消息长度
-                    prev_len = n_char
 
             # ── 猜测逻辑 ──
             elif action == "guess":
