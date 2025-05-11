@@ -11,7 +11,7 @@ import {
   Typography,
 } from "@mui/material";
 import { SenderRole } from "@/lib/types";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 interface MatchDialogProps {
   open: boolean;
@@ -29,29 +29,16 @@ export default function MatchDialog({
   matchId,
   role,
   windowT,
+  remainingTime,
   acceptAction,
   declineAction,
   timeoutAction,
 }: MatchDialogProps) {
-  const [timer, setTimer] = useState(windowT);
-
   useEffect(() => {
-    if (!open) return;
-
-    setTimer(windowT);
-    const iv = setInterval(() => {
-      setTimer((t) => {
-        if (t <= 1) {
-          clearInterval(iv);
-          timeoutAction();
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(iv);
-  }, [open, windowT, timeoutAction]);
+    if (open && remainingTime <= 0) {
+      timeoutAction();
+    }
+  }, [remainingTime, timeoutAction]);
 
   return (
     <Dialog open={open}>
@@ -71,11 +58,11 @@ export default function MatchDialog({
 
         <Box mt={2}>
           <Typography gutterBottom>
-            请在 <strong>{timer}</strong> 秒内确认
+            请在 <strong>{remainingTime}</strong> 秒内确认
           </Typography>
           <LinearProgress
             variant="determinate"
-            value={((windowT - timer) / windowT) * 100}
+            value={((windowT - remainingTime) / windowT) * 100}
           />
         </Box>
       </DialogContent>

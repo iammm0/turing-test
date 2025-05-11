@@ -38,6 +38,8 @@ export default function QueuePage() {
     leaveQueue,
     acceptMatch,
     declineMatch,
+    disconnect,
+    resetMatch
   } = useMatch(canConnect);
 
   const [timer, setTimer] = useState<number>(0);
@@ -54,6 +56,8 @@ export default function QueuePage() {
 
   useEffect(() => {
     if (matchedGameId && role) {
+      leaveQueue();
+      disconnect();
       const normalizeRole = (r: string): SenderRole => {
         if (r === "W") return SenderRole.H;
         if (r === "I" || r === "A" || r === "H") return r as SenderRole;
@@ -130,7 +134,16 @@ export default function QueuePage() {
         windowT={windowT}
         acceptAction={acceptMatch}
         declineAction={declineMatch}
-        timeoutAction={() => setSnackbar("对方已拒绝或超时，匹配失败")}
+        timeoutAction={() => {
+          setSnackbar("对方已拒绝或超时，匹配失败");
+          resetMatch();
+          setTimeout(() => {
+            if (readyState === ReadyState.OPEN) {
+              joinQueue?.();
+            }
+          }, 500);
+        }}
+
         remainingTime={timer}
       />
 

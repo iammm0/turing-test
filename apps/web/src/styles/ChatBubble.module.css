@@ -1,0 +1,18 @@
+.bubbleWrapper {
+  display: flex;
+  margin: 0.25rem 0;
+}
+
+.own {
+  justify-content: flex-end;
+}
+
+.other {
+  justify-content: flex-start;
+}
+
+.bubble {
+  max-width: 70%;
+  padding: 0.75rem;
+  border-radius: 12px;
+}

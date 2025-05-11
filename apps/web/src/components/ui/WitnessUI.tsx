@@ -1,12 +1,14 @@
 "use client";
+
 import { useState } from "react";
-import { SenderRole } from "@/lib/types";
-import ChatInput from "./ChatInput";
+import { SenderRole, MessagePacket } from "@/lib/types";
+import { Box, Typography, TextField, Button, Paper } from "@mui/material";
 import ChatBubble from "./ChatBubble";
+import styles from "@/styles/WitnessUI.module.css";
 
 type Props = {
   role: SenderRole;
-  messages: any[];
+  messages: MessagePacket[];
   status: string;
   sendMessageAction: (recipient: SenderRole, body: string) => void;
 };
@@ -21,33 +23,45 @@ export default function WitnessUI({ role, messages, status, sendMessageAction }:
   };
 
   return (
-    <div className="p-4 flex flex-col h-full">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold">
+    <Box className={styles.container}>
+      <Box className={styles.header}>
+        <Typography variant="h6" fontWeight="bold">
           {role === "H" ? "🧍‍♂️ 您是人类证人" : "🤖 您是 AI"}
-        </h2>
-        <span className="text-sm flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${status === "open" ? "bg-green-500" : "bg-gray-400"}`} />
+        </Typography>
+        <Typography variant="body2" color={status === "open" ? "green" : "gray"}>
           {status}
-        </span>
-      </div>
+        </Typography>
+      </Box>
 
-      <div className="flex-1 overflow-y-auto border rounded-lg p-3 bg-white shadow-sm mb-2">
+      <Paper elevation={2} className={styles.chatBox}>
         {messages.map((m, i) =>
-          "body" in m ? (
+          m.action === "message" ? (
             <ChatBubble
               key={i}
-              sender={m.sender}
-              recipient={m.recipient}
+              sender={m.sender as SenderRole}
+              recipient={m.recipient as SenderRole}
               body={m.body}
               ts={m.ts}
               isOwn={m.sender === role}
             />
           ) : null
         )}
-      </div>
+      </Paper>
 
-      <ChatInput role={role} input={input} setInput={setInput} onSend={handleSend} />
-    </div>
+      <Box className={styles.inputArea}>
+        <TextField
+          variant="outlined"
+          fullWidth
+          size="small"
+          placeholder="输入消息…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+        />
+        <Button variant="contained" sx={{ ml: 1 }} onClick={handleSend}>
+          发送
+        </Button>
+      </Box>
+    </Box>
   );
 }

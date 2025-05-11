@@ -1,27 +1,45 @@
 "use client";
+
+import { Box, TextField, Button } from "@mui/material";
 import { SenderRole } from "@/lib/types";
+import styles from "@/styles/ChatInput.module.css";
 
 type ChatInputProps = {
   role: SenderRole;
   input: string;
-  setInput: (value: string) => void;
+  setInputAction: (value: string) => void;
   canGuess?: boolean;
-  onSend: () => void;
+  onSendAction: () => void;
 };
 
-export default function ChatInput({ role, input, setInput, canGuess = false, onSend }: ChatInputProps) {
-  if (canGuess && role === "I") return null; // 审讯者聊天结束后不再显示聊天输入
+export default function ChatInput({
+  role,
+  input,
+  setInputAction,
+  canGuess = false,
+  onSendAction,
+}: ChatInputProps) {
+  if (canGuess && role === "I") return null;
 
   return (
-    <div className="flex gap-2 mt-2">
-      <input
-        className="flex-1 border rounded p-2"
+    <Box className={styles.inputContainer}>
+      <TextField
+        fullWidth
+        size="small"
+        variant="outlined"
         placeholder="输入消息…"
         value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && onSend()}
+        onChange={(e) => setInputAction(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onSendAction()}
       />
-      <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={onSend}>发送</button>
-    </div>
+      <Button
+        variant="contained"
+        sx={{ ml: 1 }}
+        onClick={onSendAction}
+        disabled={!input.trim()}
+      >
+        发送
+      </Button>
+    </Box>
   );
 }

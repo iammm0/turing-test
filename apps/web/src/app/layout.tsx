@@ -10,7 +10,7 @@ export default function RootLayout({
   return (
       <html lang="zh">
       <head>
-          <title>图灵测试游戏</title>
+          <title>图灵测试</title>
       </head>
       <body>
       <Providers>{children}</Providers>
