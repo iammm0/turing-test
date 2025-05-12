@@ -95,3 +95,6 @@ export type GuessResultMessage = BaseMessage & {
 export type SystemMessage = BaseMessage & {
   action: "chat_ended";
 };
+export type AuthResponse = {
+  access_token: string;
+};
