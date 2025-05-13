@@ -55,7 +55,7 @@
 │   └── web.Dockerfile
 ├── docker-compose.yml
 ├── nginx
-│   └── turing.conf
+│   └── turingtest.conf
 └── requirements.txt
 ```
 

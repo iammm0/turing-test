@@ -22,7 +22,7 @@ export type MatchEventMessage =
   | MatchFoundMessage
   | MatchedMessage
   | TimeoutMessage
-  | ErrorMessage;
+  | ErrorMessage | RequeueMessage;
 
 export type BaseMessage = {
   ts: string; // 时间戳 ISO 字符串
@@ -66,7 +66,11 @@ export type TimeoutMessage = BaseMessage & {
 
 export type ErrorMessage = BaseMessage & {
   action: "error";
-  detail?: string;
+  detail: string;
+};
+
+export type RequeueMessage = {
+  action: "requeue";
 };
 
 // 游戏中消息
@@ -90,4 +94,7 @@ export type GuessResultMessage = BaseMessage & {
 };
 export type SystemMessage = BaseMessage & {
   action: "chat_ended";
+};
+export type AuthResponse = {
+  access_token: string;
 };

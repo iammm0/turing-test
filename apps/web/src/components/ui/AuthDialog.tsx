@@ -10,6 +10,7 @@ import {
   Button,
   Typography,
   IconButton,
+  Box,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,12 +18,10 @@ import { useAuth } from "@/hooks/useAuth";
 interface AuthDialogProps {
   open: boolean;
   onCloseAction: () => void;
+  onAuthSuccess?: (token: string) => void; // 可选回调
 }
 
-export default function AuthDialog({
-  open,
-  onCloseAction,
-}: AuthDialogProps) {
+export default function AuthDialog({ open, onCloseAction, onAuthSuccess }: AuthDialogProps) {
   const { loading, error, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -32,100 +31,118 @@ export default function AuthDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let token: string | null;
       if (mode === "login") {
-        await login(email, password);
+        token = await login(email, password);
       } else {
-        await register(email, password);
+        token = await register(email, password);
       }
-      // 登陆/注册成功后关闭弹窗
+      if (token && onAuthSuccess) {
+        onAuthSuccess(token);
+      }
       onCloseAction();
     } catch {
-      // error 已由 useAuth 维护，可选地在这里额外处理
+      // handled by useAuth
     }
   };
 
   return (
-    <Dialog open={open} onClose={onCloseAction}>
-      <DialogTitle sx={{ m: 0, p: 2 }}>
-        {mode === "login" ? "登录" : "注册"}
-        <IconButton
-          aria-label="close"
-          onClick={onCloseAction}
-          sx={{
-            position: "absolute",
-            right: 8,
-            top: 8,
-            color: (theme) => theme.palette.grey[500],
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
+    <Dialog open={open} onClose={onCloseAction} maxWidth="xs" fullWidth>
+      <Box
+        sx={{
+          backgroundColor: "#0f0f0f",
+          color: "#fff",
+          fontFamily: "monospace",
+        }}
+      >
+        <DialogTitle sx={{ px: 3, pt: 2 }}>
+          {mode === "login" ? "LOGIN" : "REGISTER"}
+          <IconButton
+            aria-label="close"
+            onClick={onCloseAction}
+            sx={{ position: "absolute", right: 8, top: 8, color: "#aaa" }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
 
-      <DialogContent>
-        {mode === "register" && (
+        <DialogContent sx={{ px: 3 }}>
+          {mode === "register" && (
+            <TextField
+              label="Nickname"
+              fullWidth
+              margin="normal"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={loading}
+              sx={{input: { fontFamily: "monospace", color: "#fff" }, label: { color: "#aaa" },}}
+            />
+          )}
+
           <TextField
-            label="昵称"
+            label="Email"
+            type="email"
             fullWidth
             margin="normal"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
+            sx={{input: { fontFamily: "monospace", color: "#fff" }, label: { color: "#aaa" },}}
           />
-        )}
 
-        <TextField
-          label="邮箱"
-          type="email"
-          fullWidth
-          margin="normal"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={loading}
-        />
+          <TextField
+            label="Password"
+            type="password"
+            fullWidth
+            margin="normal"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            sx={{input: { fontFamily: "monospace", color: "#fff" }, label: { color: "#aaa" },}}
+          />
 
-        <TextField
-          label="密码"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
-        />
+          {error && (
+            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+              {error}
+            </Typography>
+          )}
 
-        {error && (
-          <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-            {error}
+          <Typography
+            variant="body2"
+            sx={{
+              mt: 2,
+              cursor: "pointer",
+              color: "#0ff",
+              textDecoration: "underline",
+              fontFamily: "monospace",
+            }}
+            onClick={() => setMode((m) => (m === "login" ? "register" : "login"))}
+          >
+            {mode === "login" ? "No account? Register now" : "Have an account? Log in"}
           </Typography>
-        )}
+        </DialogContent>
 
-        <Typography
-          variant="body2"
-          sx={{ mt: 1, cursor: "pointer", textDecoration: "underline" }}
-          onClick={() => {
-            setMode((m) => (m === "login" ? "register" : "login"));
-          }}
-        >
-          {mode === "login" ? "没有账号？注册一个" : "已有账号？去登录"}
-        </Typography>
-      </DialogContent>
-
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          color="warning"
-          disabled={
-            loading ||
-            !email ||
-            !password ||
-            (mode === "register" && !displayName)
-          }
-        >
-          {mode === "login" ? "登录" : "注册"}
-        </Button>
-      </DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3, justifyContent: "center" }}>
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            disabled={
+              loading || !email || !password || (mode === "register" && !displayName)
+            }
+            sx={{
+              backgroundColor: "#ffc107",
+              color: "#000",
+              fontWeight: "bold",
+              fontFamily: "monospace",
+              padding: "8px 24px",
+              borderRadius: "8px",
+              "&:hover": { backgroundColor: "#ffca28" },
+            }}
+          >
+            {mode === "login" ? "LOGIN" : "REGISTER"}
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 }

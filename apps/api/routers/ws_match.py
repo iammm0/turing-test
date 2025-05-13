@@ -47,9 +47,15 @@ async def ws_match(websocket: WebSocket):
     # 2️⃣ 从 query 参数读取并验证 token
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.send_json({"action": "error", "detail": "缺少 token 参数"})
+        await websocket.send_json(
+            {
+                "action": "error",
+                "detail": "缺少 token 参数"
+            }
+        )
         return await websocket.close()
 
+    # 解码 token 字段，验证用户身份
     try:
         # 只解析 payload 部分（第二段），不验证签名
         payload_part = token.split(".")[1]
@@ -62,8 +68,15 @@ async def ws_match(websocket: WebSocket):
         await websocket.send_json({"action": "error", "detail": f"Token 解码失败: {str(e)}"})
         return await websocket.close()
 
+    uid_str = str(user_id)
+
     # 3️⃣ 如果用户正在游戏中，拒绝排队并断开
-    if user_id in ACTIVE_USERS:
+    existing_ws = PLAYERS.get(uid_str)
+    if existing_ws and existing_ws != websocket:
+        await existing_ws.close()
+        QUEUE[:] = [ws for ws in QUEUE if ws != existing_ws]
+
+    if uid_str in ACTIVE_USERS:
         await websocket.send_json({
             "action": "error",
             "detail": "您已有正在进行的对局，不能再次排队"
@@ -71,7 +84,6 @@ async def ws_match(websocket: WebSocket):
         return await websocket.close()
 
     # 4️⃣ 注册玩家
-    uid_str = str(user_id)
     PLAYERS[uid_str] = websocket
 
     try:
@@ -104,6 +116,11 @@ async def ws_match(websocket: WebSocket):
                 if websocket in QUEUE:
                     QUEUE.remove(websocket)
 
+            elif action == "ping":
+                await websocket.send_json({
+                    "action": "pong"
+                })
+
             elif action in ("accept", "decline"):
                 match_id = data.get("match_id")
                 info = PENDING.get(match_id)
@@ -113,9 +130,11 @@ async def ws_match(websocket: WebSocket):
                 # 拒绝：取消定时、通知对方重排、关闭自己
                 if action == "decline":
                     info["timer"].cancel()
-                    for other in info["others"]:
+                    for other in info["users"]:
                         if other!=uid_str and other in PLAYERS:
-                            await PLAYERS[other].send_json({"action": "requeue"})
+                            await PLAYERS[other].send_json({
+                                "action": "requeue"
+                            })
                             QUEUE.append(PLAYERS[other])
                         return await websocket.close()
 
@@ -132,66 +151,79 @@ async def ws_match(websocket: WebSocket):
 
 
     finally:
-        # 无论何种情况（断开、error、完成匹配），都要清理自己在 QUEUE / PLAYERS 中的痕迹
+        for match_id, info in list(PENDING.items()):
+            if uid_str in info["users"]:
+                info["timer"].cancel()
+                PENDING.pop(match_id, None)
+                for other_uid in info["users"]:
+                    if other_uid != uid_str and other_uid in PLAYERS:
+                        await PLAYERS[other_uid].send_json({"action": "requeue"})
+                        QUEUE.append(PLAYERS[other_uid])
+                break
+
         if websocket in QUEUE:
             QUEUE.remove(websocket)
-
         PLAYERS.pop(uid_str, None)
+        ACTIVE_USERS.discard(uid_str)
 
 
 async def matchmaker_loop():
     """后台任务：每秒检查队列，2人以上则配对并发 invite"""
     while True:
-        await asyncio.sleep(1)
-        if len(QUEUE) < 2:
-            continue
+        try:
+            await asyncio.sleep(1)
+            if len(QUEUE) < 2:
+                continue
 
-        # 1) 从队列取出两个 WS
-        ws1 = QUEUE.pop(0)
-        ws2 = QUEUE.pop(0)
+            # 1) 从队列取出两个 WS
+            ws1 = QUEUE.pop(0)
+            ws2 = QUEUE.pop(0)
 
-        # 2) 反查各自的 user_id（字符串）
-        uid1 = next((u for u, w in PLAYERS.items() if w is ws1), None)
-        uid2 = next((u for u, w in PLAYERS.items() if w is ws2), None)
+            # 2) 反查各自的 user_id（字符串）
+            uid1 = next((u for u, w in PLAYERS.items() if w is ws1), None)
+            uid2 = next((u for u, w in PLAYERS.items() if w is ws2), None)
 
-        # 如果任一端已经掉线／被移除，就把活着的那端放回队列，然后跳过
-        if not uid1 or not uid2:
-            # ws1 还活着，就补回队列
-            if uid1 and ws1 not in QUEUE:
-                QUEUE.insert(0, ws1)
-            # ws2 还活着，就补回队列
-            if uid2 and ws2 not in QUEUE:
-                QUEUE.insert(0, ws2)
-            continue
+            # 如果任一端已经掉线／被移除，就把活着的那端放回队列，然后跳过
+            if not uid1 or not uid2:
+                # ws1 还活着，就补回队列
+                if uid1 and ws1 not in QUEUE:
+                    QUEUE.insert(0, ws1)
+                # ws2 还活着，就补回队列
+                if uid2 and ws2 not in QUEUE:
+                    QUEUE.insert(0, ws2)
+                continue
 
-        # 随机分配角色
-        if random.random() < 0.5:
-            roles = {uid1: "I", uid2: "W"}
-        else:
-            roles = {uid2: "I", uid1: "W"}
+            # 随机分配角色
+            if random.random() < 0.5:
+                roles = {uid1: "I", uid2: "W"}
+            else:
+                roles = {uid2: "I", uid1: "W"}
 
-        match_id = str(uuid.uuid4())
-        timer = asyncio.get_event_loop().call_later(
-            CONFIRM_WINDOW, lambda: asyncio.create_task(_on_timeout(match_id))
-        )
-        PENDING[match_id] = {
-            "users": [uid1, uid2],
-            "roles": roles,
-            "accepted": set(),
-            "match_status": MatchStatus.WAITING,  # ← 新增
-            "timer": timer,
-        }
+            match_id = str(uuid.uuid4())
+            timer = asyncio.get_event_loop().call_later(
+                CONFIRM_WINDOW, lambda: asyncio.create_task(_on_timeout(match_id))
+            )
+            PENDING[match_id] = {
+                "users": [uid1, uid2],
+                "roles": roles,
+                "accepted": set(),
+                "match_status": MatchStatus.WAITING,  # ← 新增
+                "timer": timer,
+            }
 
-        # 发邀请
-        for uid in (uid1, uid2):
-            ws = PLAYERS.get(uid)
-            if ws:
-                await ws.send_json({
-                    "action": "match_found",
-                    "match_id": match_id,
-                    "role": roles[uid],
-                    "window": CONFIRM_WINDOW,
-                })
+            # 发邀请
+            for uid in (uid1, uid2):
+                ws = PLAYERS.get(uid)
+                if ws:
+                    await ws.send_json({
+                        "action": "match_found",
+                        "match_id": match_id,
+                        "role": roles[uid],
+                        "window": CONFIRM_WINDOW,
+                    })
+
+        except Exception as e:
+            print(f"[匹配线程异常] {e}")
 
 
 async def _on_timeout(match_id: str):
@@ -199,6 +231,8 @@ async def _on_timeout(match_id: str):
     超时处理：如果玩家在时限内未确认，则通知重排
     """
     info = PENDING.pop(match_id, None)
+    if not info:
+        return
     for uid in info["users"]:
         ws = PLAYERS.get(uid)
         if ws:
@@ -208,6 +242,7 @@ async def _on_timeout(match_id: str):
             })
             await ws.close()
             PLAYERS.pop(uid, None)
+            ACTIVE_USERS.discard(uid)
 
 
 async def _finalize_match(match_id: str, info: dict):
@@ -250,22 +285,25 @@ async def _finalize_match(match_id: str, info: dict):
         if not ws:
             continue
 
-        # ① 提示
-        await ws.send_json({
-            "action": "game_starting",
-            "game_id": str(game.id),
-            "detail": "匹配成功，正在进入对局…"
-        })
-        await asyncio.sleep(1)
+        try:
+            # ① 提示
+            await ws.send_json({
+                "action": "game_starting",
+                "game_id": str(game.id),
+                "detail": "匹配成功，正在进入对局…"
+            })
+            await asyncio.sleep(1)
 
-        # ② 真正进入
-        await ws.send_json({
-            "action": "matched",
-            "game_id": str(game.id)
-        })
-
-        await ws.close()
-        PLAYERS.pop(uid, None)
+            # ② 真正进入
+            await ws.send_json({
+                "action": "matched",
+                "game_id": str(game.id)
+            })
+        except:
+            pass
+        finally:
+            await ws.close()
+            PLAYERS.pop(uid, None)
 
     # 清理掉 pending 条目
     PENDING.pop(match_id, None)
@@ -291,6 +329,9 @@ async def _schedule_chat_end(game_id: str):
         f"room:{game_id}:H_I",
         f"room:{game_id}:I_H",
     ]
-    msg = json.dumps({"action": "chat_ended", "detail": "聊天已结束，请审讯者做出最终猜测"})
+    msg = json.dumps({
+        "action": "chat_ended",
+        "detail": "聊天已结束，请审讯者做出最终猜测"
+    })
     for ch in channels:
         await rdb.publish(ch, msg)

@@ -5,7 +5,8 @@ import random
 import uuid
 from typing import Dict
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi.logger import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,6 +51,9 @@ _llm = Grok3Client(
     api_key="sk-ykFU3QyxG9LpZdLRe4acHdKvQFVBWmUQbeqDBolLq14CdhK0"
 )
 
+# —— 全局变量：标记已启动的 AI 后台任务 —— 🆕
+AI_STARTED: set[str] = set()
+
 @router.websocket(
     "/rooms/{game_id}/{role}",
     name="房间内实时聊天；按 sender_recipient 分双通道"
@@ -86,14 +90,16 @@ async def chat_socket(
 
     token = ws.query_params.get("token")
     if not token:
-        await ws.send_json({"error": "token missing"})
+        await ws.send_json({
+            "error": "token missing"
+        })
         return await ws.close(code=4401)
 
     try:
         payload = decode_token(token)
         user_id = uuid.UUID(payload["sub"])
-    except HTTPException:
-        await ws.send_json({"error": "invalid token"})
+    except Exception as e:
+        await ws.send_json({"error": "invalid token", "detail": str(e)})
         return await ws.close(code=4402)
 
     # ── 2. 校验对局存在 ──
@@ -103,10 +109,18 @@ async def chat_socket(
         await ws.close(code=4404)
         return
 
+    logger.info(f"User {user_id} as {role} connected to game {game_id}")
+
     # ── 3. 按角色订阅对应 Redis 频道 ──
     # 审讯者 I 要接收来自 AI(A) 和 人类(H) 的消息
     if role == SenderRole.I:
+        # ✅ 启动 AI 聊天任务（非阻塞） + 去重防重复 🆕
+        if str(game_id) not in AI_STARTED:
+            AI_STARTED.add(str(game_id))  # 🆕 标记当前任务已启动
+            asyncio.create_task(start_ai_for_game(game_id, db))
+
         channels = [f"room:{game_id}:A_I", f"room:{game_id}:H_I"]
+
     # AI 只接收 I 发送的消息
     elif role == SenderRole.A:
         channels = [f"room:{game_id}:I_A"]
@@ -129,20 +143,27 @@ async def chat_socket(
     try:
         # 主循环：处理前端发来的消息
         while True:
-            raw = await ws.receive_text()      # 阻塞直到收到文本
-            packet: Dict = json.loads(raw)     # 解析 JSON
+            raw = await ws.receive_text()
+            try:
+                packet: Dict = json.loads(raw)
+            except json.JSONDecodeError:
+                await ws.send_json({"error": "invalid JSON"})
+                continue
+
             action = packet.get("action")
 
             # ── 聊天消息逻辑 ──
             if action == "message":
+                required = {"sender", "recipient", "body"}
+                missing = required - packet.keys()
                 # 校验必需字段
-                if {"sender", "recipient", "body"} - packet.keys():
-                    await ws.send_text(json.dumps({"error": "invalid message payload"}))
+                if missing:
+                    await ws.send_json({"error": f"missing fields: {missing}"})
                     continue
 
                 # 确保发送者角色和 WebSocket 绑定角色一致
                 if packet["sender"] != role.value:
-                    await ws.send_text(json.dumps({"error": "sender mismatch"}))
+                    await ws.send_json({"error": "sender mismatch"})
                     continue
 
                 # 时间戳
@@ -152,67 +173,16 @@ async def chat_socket(
                 # a) 发布到 Redis，让其他通道订阅者收到
                 await publish_chat(game_id, packet)
 
+                clean_body = post_process_reply(packet["body"])
                 # b) 持久化到数据库
                 db.add(Message(
                     game_id=game_id,
                     sender=SenderRole(packet["sender"]),
                     recipient=SenderRole(packet["recipient"]),
-                    body=packet["body"],
+                    body=clean_body,
                     ts=now,
                 ))
                 await db.commit()
-
-                # c) 如果是 I→A，触发 AI 回复
-                if packet["sender"] == SenderRole.I.value and packet["recipient"] == SenderRole.A.value:
-                    # 1) 拉取历史
-                    stmt = (
-                        select(Message)
-                        .where(
-                            Message.game_id == game_id,
-                            Message.sender.in_([SenderRole.I, SenderRole.A]),
-                            Message.recipient.in_([SenderRole.I, SenderRole.A]),
-                        )
-                        .order_by(Message.ts)
-                    )
-                    history_rows = (await db.execute(stmt)).scalars().all()
-
-                    # 2) 调用 llm 生成回复
-                    ai_reply = await _llm.chat_reply(history_rows, packet["body"])
-
-                    n_char = len(ai_reply)
-                    n_char_prev = prev_len
-
-                    delay = (
-                        1.0
-                        + random.normalvariate(0.3, 0.03) * n_char
-                        + random.normalvariate(0.03, 0.003) * n_char_prev
-                        + random.gammavariate(2.5, 0.25)
-                    )
-
-                    # 3) 构造 AI 消息
-                    ai_ts = dt.datetime.now(dt.UTC)
-                    ai_msg = {
-                        "sender": SenderRole.A.value,
-                        "recipient": SenderRole.I.value,
-                        "body": post_process_reply(ai_reply),
-                        "ts": ai_ts.isoformat(),
-                    }
-
-                    # 等待模拟用户打字、阅读和思考的时间
-                    await asyncio.sleep(delay)
-
-                    # 4) 发布 & 存库
-                    await publish_chat(game_id, ai_msg)
-                    db.add(Message(
-                        game_id=game_id,
-                        sender=SenderRole.A,
-                        recipient=SenderRole.I,
-                        body=ai_reply,
-                        ts=ai_ts,
-                    ))
-                    await db.commit()
-                    # 更新前一条消息长度
-                    prev_len = n_char
 
             # ── 猜测逻辑 ──
             elif action == "guess":
@@ -260,7 +230,82 @@ async def chat_socket(
             else:
                 await ws.send_text(json.dumps({"error": "unknown action"}))
 
+
     except WebSocketDisconnect:
-        # 客户端断开：取消中继任务、注销订阅
-        relay_task.cancel()
+        logger.info(f"User {user_id} as {role} disconnected from game {game_id}")
+    finally:
+        try:
+            relay_task.cancel()
+            await asyncio.wait_for(relay_task, timeout=1)
+        except:
+            pass
         await pubsub.close()
+
+
+async def start_ai_for_game(game_id: uuid.UUID, db: AsyncSession):
+    """
+    AI 后台监听 I→A，生成并发送 AI 回复（无需 WebSocket）
+    """
+    channel = f"room:{game_id}:I_A"
+    pubsub = rdb.pubsub()
+    await pubsub.subscribe(channel)
+
+    async for msg in pubsub.listen():
+        if msg["type"] != "message":
+            continue
+
+        try:
+            data = json.loads(msg["data"])
+            if data.get("action") != "message":
+                continue
+
+            human_input = data.get("body")
+            now = dt.datetime.now(dt.UTC)
+
+            # 拉取上下文
+            stmt = (
+                select(Message)
+                .where(
+                    Message.game_id == game_id,
+                    Message.sender.in_([SenderRole.I, SenderRole.A]),
+                    Message.recipient.in_([SenderRole.I, SenderRole.A])
+                )
+                .order_by(Message.ts)
+            )
+            history = (await db.execute(stmt)).scalars().all()
+
+            ai_reply = await _llm.chat_reply(history, human_input)
+            ai_clean = post_process_reply(ai_reply)
+
+            delay = (
+                1.0
+                + random.normalvariate(0.3, 0.03) * len(ai_reply)
+                + random.gammavariate(2.5, 0.25)
+            )
+
+            await asyncio.sleep(delay)
+
+            # 构造消息
+            reply_packet = {
+                "action": "message",
+                "sender": SenderRole.A.value,
+                "recipient": SenderRole.I.value,
+                "body": ai_clean,
+                "ts": dt.datetime.now(dt.UTC).isoformat()
+            }
+
+            await publish_chat(game_id, reply_packet)
+
+            db.add(Message(
+                game_id=game_id,
+                sender=SenderRole.A,
+                recipient=SenderRole.I,
+                body=ai_reply,
+                ts=now
+            ))
+            await db.commit()
+
+        except Exception as e:
+            logger.error(f"❌ AI 处理失败: {e}")
+            break
+
