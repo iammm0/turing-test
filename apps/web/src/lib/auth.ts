@@ -1,7 +1,7 @@
 import { AuthResponse } from "./types";
 
 export async function apiLogin(email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch("http://localhost:8000/api/auth/login", {
+  const res = await fetch("https://api.turingtest.physicistscard.com/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -16,7 +16,7 @@ export async function apiLogin(email: string, password: string): Promise<AuthRes
 }
 
 export async function apiRegister(email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch("http://localhost:8000/api/auth/register", {
+  const res = await fetch("https://api.turingtest.physicistscard.com/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),

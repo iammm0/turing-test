@@ -23,7 +23,7 @@ export function useGame(
   );
 
   const url = shouldConnect && token
-    ? `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:8000/api/ws/rooms/${gameId}/${role}?token=${token}`
+    ? `${location.protocol === "https:" ? "wss" : "ws"}://api.turingtest.physicistscard.com/api/ws/rooms/${gameId}/${role}?token=${token}`
     : "";
 
   const interrogatorId = useMemo(() => {

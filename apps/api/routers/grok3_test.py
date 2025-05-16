@@ -53,4 +53,37 @@ async def grok3_test(req: Grok3TestRequest):
             "model": client.model,
             "sent_payload": getattr(client, "last_payload", "<none>")
         }
-        raise HTTPException(status_code=status, detail=detail)
+
+        # 返回 400~499，说明请求非法
+        if 400 <= status < 500:
+            raise HTTPException(status_code=status, detail=detail)
+
+        # 返回 500 及以上，说明是服务端错误（可能是密钥过期、服务挂了等）
+        raise HTTPException(
+            status_code=502,  # 使用 502 更明确地表示“后端服务失败”
+            detail={
+                "message": "后端 LLM 接口异常，请稍后重试。",
+                **detail
+            }
+        )
+
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "无法连接到 LLM 接口服务",
+                "reason": str(e),
+                "endpoint": client.endpoint,
+                "model": client.model
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "发生未知错误",
+                "error": str(e),
+                "model": client.model
+            }
+        )

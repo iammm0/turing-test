@@ -105,7 +105,7 @@ class Grok3Client(GenericChatClient):
             prompt_builder=prompt_builder,
             model="grok-3",
             api_key=api_key,
-            base_url="https://api.claudeplus.top/v1",
+            base_url="https://api.claudeplus.top",
             endpoint="/chat/completions",
             system_prompt_path=system_prompt_path,
         )
